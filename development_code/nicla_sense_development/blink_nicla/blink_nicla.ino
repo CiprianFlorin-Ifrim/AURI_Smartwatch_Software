@@ -6,8 +6,12 @@ void setup() {
 }
 
 void loop() {
-  nicla::leds.setColor(green);
+  int red = 234;
+  int green = 72;
+  int blue = 122;
+
+  nicla::leds.setColor(red, green, blue);
   delay(1000);
   nicla::leds.setColor(off);
-  delay(1000);
+  delay(1000); 
 }
