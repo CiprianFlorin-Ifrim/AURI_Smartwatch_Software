@@ -1,15 +1,14 @@
-#include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
-
-SoftwareSerial softwareSerial(10, 11);
+#include "Nicla_System.h"
 
 // Create the Player object
 DFRobotDFPlayerMini player;
 
 void setup() 
 {
-  softwareSerial.begin(9600);
-  player.begin(softwareSerial);
+  Serial1.begin(9600);
+  nicla::begin();
+  player.begin(Serial1);
 }
 
 

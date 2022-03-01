@@ -1,14 +1,31 @@
+/***************************************************
+  This is a library example for the MLX90614 Temp Sensor
+
+  Designed specifically to work with the MLX90614 sensors in the
+  adafruit shop
+  ----> https://www.adafruit.com/products/1747 3V version
+  ----> https://www.adafruit.com/products/1748 5V version
+
+  These sensors use I2C to communicate, 2 pins are required to
+  interface
+  Adafruit invests time and resources providing this open source code,
+  please support Adafruit and open-source hardware by purchasing
+  products from Adafruit!
+
+  Written by Limor Fried/Ladyada for Adafruit Industries.
+  BSD license, all text above must be included in any redistribution
+ ****************************************************/
+
 #include <Wire.h>
 #include <Adafruit_MLX90614.h>
-#include <Adafruit_BMP280.h>
+#include "Adafruit_SI1145.h"
 #include "Nicla_System.h"
 
+Adafruit_SI1145 uv = Adafruit_SI1145();
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
-Adafruit_BMP280 bmp; // I2C
 
 void setup() {
   nicla::begin();
-  
   Serial.begin(9600);
   while (!Serial);
 
@@ -19,52 +36,39 @@ void setup() {
     while (1);
   };
 
-  Serial.print("Emissivity = "); Serial.println(mlx.readEmissivity());
-  Serial.println("================================================");
-
-  while ( !Serial ) delay(100);   // wait for native usb
-  Serial.println(F("BMP280 test"));
-  unsigned status;
-  //status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
-  status = bmp.begin();
-  Serial.print("SensorID was: 0x"); Serial.println(bmp.sensorID(),16);
-  if (!status) {
-    Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
-                      "try a different address!"));
-    Serial.print("SensorID was: 0x"); Serial.println(bmp.sensorID(),16);
-    Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-    Serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
-    Serial.print("        ID of 0x60 represents a BME 280.\n");
-    Serial.print("        ID of 0x61 represents a BME 680.\n");
-    while (1) delay(10);
+  Serial.println("Adafruit SI1145 test");
+  if (! uv.begin()) {
+    Serial.println("Didn't find Si1145");
+    while (1);
   }
 
-  /* Default settings from datasheet. */
-  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-                  Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
+  Serial.print("Emissivity = "); Serial.println(mlx.readEmissivity());
+  Serial.println("================================================");
 }
 
 void loop() {
-  Serial.print(F("Temperature = "));
-  Serial.print(bmp.readTemperature());
-  Serial.println(" *C");
+  Serial.println("===================");
+  Serial.print("Vis: "); Serial.println(uv.readVisible());
+  Serial.print("IR: "); Serial.println(uv.readIR());
+  
+  // Uncomment if you have an IR LED attached to LED pin!
+  //Serial.print("Prox: "); Serial.println(uv.readProx());
 
-  Serial.print(F("Pressure = "));
-  Serial.print(bmp.readPressure());
-  Serial.println(" Pa");
+  float UVindex = uv.readUV();
+  // the index is multiplied by 100 so to get the
+  // integer index, divide by 100!
+  UVindex /= 100.0;  
+  Serial.print("UV: ");  Serial.println(UVindex);
 
-  Serial.print(F("Approx altitude = "));
-  Serial.print(bmp.readAltitude(1013.25)); /* Adjusted to local forecast! */
-  Serial.println(" m");
-
-  Serial.println();
-    
   Serial.print("Ambient = "); Serial.print(mlx.readAmbientTempC());
   Serial.print("*C\tObject = "); Serial.print(mlx.readObjectTempC()); Serial.println("*C");
 
   Serial.println();
-  delay(1000);
+
+
+  Serial.print("Ambient = "); Serial.print(mlx.readAmbientTempC());
+  Serial.print("*C\tObject = "); Serial.print(mlx.readObjectTempC()); Serial.println("*C");
+
+  Serial.println();
+  delay(500);
 }
