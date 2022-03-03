@@ -1,12 +1,12 @@
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
-//--------------------------------------------------------------------------LIBRARIES--------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------LIBRARIES-------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include "Arduino_BHY2.h"
 #include "Nicla_System.h"
 
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------DECLARATIONS------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Sensor humidity(SENSOR_ID_HUM);
 Sensor temperature(SENSOR_ID_TEMP);
 Sensor pressure(SENSOR_ID_BARO);
@@ -22,10 +22,12 @@ String co2_air_quality = "";
 String discomfort_condition = "";
 String pressure_effect ="";
 float sea_level_pressure = 1013.25;
+float dry_air_constant = 287.058;                                               //specific gas constant for dry air equal in J/(kg·K)
+float water_vapor_constant = 461.495;                                      //specific gas constant for water vapor in J/(kg·K)
 
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------SYSTEM SETUP------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void setup(){
   nicla::begin();
   Serial.begin(115200);
@@ -39,9 +41,9 @@ void setup(){
   tilt.begin();
 }
 
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
-//---------------------------------------------------------------------------MAIN CODE-------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------MAIN CODE-----------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void loop(){
   static auto lastCheck= millis();
   BHY2.update();
@@ -68,9 +70,30 @@ void loop(){
     float humidity_fusion = (hum_value+comp_hum)/2;
 
     int altitude = ((pow((sea_level_pressure/pressure_value), (1/5.257)) -1) * (temp_value + 273.15))/0.0065;           //altitude hypsometric formula
-    int discomfort_index = temp_value - 0.55 * (1 -0.01 * hum_value) * (temp_value - 14.5);                             //discomfort index formula
+    
+    int discomfort_index = temp_value - 0.55 * (1 -0.01 * hum_value) * (temp_value - 14.5);                                        //discomfort index formula
 
-    if (voc_eq <= 5.0) voc_air_quality = "Clean Air! No Volatile voc_air_qualitys Detected!";
+    //the ratio of the actual amount of water vapor in the air to the amount it could hold when saturated
+    float relative_humidity = ((hum_value * pressure_value)/(0.378 * hum_value + 0.622))/(6.112 * exp((17.67 * temp_value)/(temp_value+243.5)));     // relative humidity from Bolton 1980 The computation of Equivalent Potential Temperature 
+    float air_dew_point = temp_value - ((100-relative_humidity)/5);                                                                                //The dew point is the temperature to which air must be cooled to become saturated with water vapor
+    float air_dew_point_accurate = (243.12 * (log(relative_humidity/100) + ((17.62* temp_value)/(243.12+temp_value)))) / (17.62 - (log(relative_humidity/100) + ((17.62* temp_value)/(243.12+temp_value))));
+    float saturation_vapor_pressure = 6.1078 * pow(10, ((7.5*temp_value)/(temp_value + 237.3)));                             //from https://www.omnicalculator.com/physics/air-density#how-to-calculate-the-air-density
+    float water_vapor_pressure = (saturation_vapor_pressure * relative_humidity)/100;                                                //multiplication of saturation vapor pressure with the relative humidity, divided by 100%
+    float dry_air_pressure = pressure_value - water_vapor_pressure;
+    float air_density = ((dry_air_pressure/(dry_air_constant * (temp_value+273.15))) + (water_vapor_pressure / ( water_vapor_constant * (temp_value+273.15))))*100;     //air density formula, can be used for air buoyancy 
+
+    //the mass of water vapor in a unit volume of air. It is a measure of the actual water vapor content of the air.
+    double absolute_humidity = (((saturation_vapor_pressure * relative_humidity)/10) / (water_vapor_constant * temp_value)) ;   //expressed in grams per cubic meter of moist air - https://planetcalc.com/2167/
+
+    //https://ncalculators.com/meteorology/heat-index-calculator.htm
+    float heat_index_part1 = -42.379+(2.04901523*temp_value)+(10.14333127*relative_humidity)-(0.22475541*temp_value*relative_humidity)-(6.83783*pow(10,-3)*pow(temp_value,2))-(5.481717*pow(10,-2)*pow(relative_humidity,2)) ;
+    float heat_index_part2 = +(1.22874*pow(10, -3)*pow(temp_value,2)*relative_humidity)+(8.5282*pow(10, -4)*temp_value*pow(relative_humidity,2))-(1.99*pow(10, -6) *pow(temp_value, 2)*pow(relative_humidity, 2));
+    int heat_index = heat_index_part1 + heat_index_part2;                                                                                                                                     //felt air temperature, does not take into consideration direct sunlight effect
+
+    float cloud_base_altitude_method1 = 125 * (temp_value - air_dew_point_accurate) + altitude;
+    float cloud_base_altitude_method2 = ((1.8*( temp_value - air_dew_point_accurate)+64) / 4.4) * 1000 + altitude*3.28084;
+    
+    if (voc_eq <= 5.0) voc_air_quality = "Clean Air! No Volatile Detected!";
     else if (5.0 < voc_eq <= 10.0) voc_air_quality = "Ethane Alkane Detected!";
     else if (10.0 < voc_eq <= 15.0) voc_air_quality = "Isoprene/Methyl/Butadiene/Ethanol Detected!";
     else if (15.0 < voc_eq <= 50.0) voc_air_quality = "Carbon Monoxide Detected!";
@@ -103,6 +126,11 @@ void loop(){
 
     if (pressure_value > 1022.678) pressure_effect = "Caution! High pressure which pushes against the body and limits how much the tissue can expand. Potential of joint paint!";
     else if (pressure_value < 1007) pressure_effect = "Caution! Low pressure allowing the body's tissues to expand, affecting the nerves, which can cause migraines!";
+    else if (1007 <= pressure_value <= 1022.678) pressure_effect = "Expected pressure range!";
+
+ 
+    Serial.print("\r\n");
+    Serial.println(String("---------------------------------------------------------------------------------------------------------"));
 
     Serial.println(String("Temperature is: ") + String(temp_value) + String(" C"));
     Serial.println(String("Compensated Temperature is: ") + String(comp_temp) + String(" C"));
@@ -110,19 +138,31 @@ void loop(){
     Serial.println(String("Compensated Humidity is: ") + String(comp_hum) + String(" %"));
     Serial.println(String("Pressure: ") + String(pressure_value) + String(" hPa"));
 
-    Serial.println(pressure_effect);
     Serial.println(String("Altitude: ") + String(altitude) + String(" m"));
-    Serial.println(String("Discomfort level: ") + String(discomfort_index));
+    Serial.println(String("Relative Humidity: ") + String(relative_humidity) + String(" %"));
+    Serial.println(String("Air Dew Point: ") + String(air_dew_point) + String(" C"));
+    Serial.println(String("Air Dew Point Accurate: ") + String(air_dew_point_accurate) + String(" C"));
+    Serial.println(String("Saturation Vapor Pressure: ") + String(saturation_vapor_pressure));
+    Serial.println(String("Water Vapor Pressure: ") + String(water_vapor_pressure) + String(" hPa"));
+    Serial.println(String("Dry Air Pressure ") + String(dry_air_pressure) + String(" hPa"));
+    Serial.println(String("Air Density: ") + String(air_density) + String(" kg/m^3"));
+    Serial.println(String("Absolute Humidity: ") + String(absolute_humidity, 4) + String(" kg/m^3"));
 
+    Serial.println(String("Cloud Base Altitude Method 1: ") + String(cloud_base_altitude_method1, 4) + String(" m"));
+    Serial.println(String("Cloud Base Altitude Method 2: ") + String(cloud_base_altitude_method2, 4) + String(" ft"));   
     
+    Serial.println(String("Heat Index: ") + String(heat_index));
+    Serial.println(String("Discomfort level: ") + String(discomfort_index));
+    Serial.println(discomfort_condition);
+    Serial.println(pressure_effect);
+  
     Serial.println(String("Gas resistance: ") + String(gas_resistance));
     Serial.println(String("Compensated Gas Resistance is: ") + String(comp_gas_res) + String(" Ohms"));
 
     Serial.println(String("Temperature Fusion is: ") + String(temp_fusion) + String(" C"));
     Serial.println(String("Humidity Fusion is: ") + String(humidity_fusion) + String(" %"));
 
-
-    Serial.println(String("Volatile Organic voc_air_qualitys: ") + String(voc_eq) + String(" ppm"));
+    Serial.println(String("Volatile Organic: ") + String(voc_eq) + String(" ppm"));
     Serial.println(voc_air_quality);
 
     Serial.println(String("Estimation of CO2 levels: ") + String(co2_eq) + String(" ppm"));
@@ -134,7 +174,7 @@ void loop(){
     
     Serial.println(String("Tilt info: ") + tilt.toString() + String(" - Binary value:") + tilt.value());
 
-    Serial.println(orientation.toString());
-    Serial.println((orientation.toString()).substring(62, 70));
+    Serial.println(String("---------------------------------------------------------------------------------------------------------"));
+
   }
 }
