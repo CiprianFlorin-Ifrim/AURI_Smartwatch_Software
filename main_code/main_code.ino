@@ -12,18 +12,22 @@ Sensor temperature(SENSOR_ID_TEMP);
 Sensor pressure(SENSOR_ID_BARO);
 Sensor gas(SENSOR_ID_GAS);
 SensorBSEC bsec(SENSOR_ID_BSEC);
-SensorXYZ magnetometer(SENSOR_ID_MAG);
 SensorOrientation orientation(SENSOR_ID_ORI);
 Sensor tilt(SENSOR_ID_WRIST_TILT_GESTURE);
 
 String voc_air_quality = "";
 String iaq_air_quality = "";
 String co2_air_quality = "";
-String discomfort_condition = "";
 String pressure_effect ="";
+String discomfort_condition = "";
+String heat_index_condition ="";
 float sea_level_pressure = 1013.25;
 float dry_air_constant = 287.058;                                               //specific gas constant for dry air equal in J/(kg·K)
 float water_vapor_constant = 461.495;                                      //specific gas constant for water vapor in J/(kg·K)
+
+String compass_array[13];
+int StringCount = 0;
+String compass_heading = "";
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------SYSTEM SETUP------------------------------------------------------------------------
@@ -66,6 +70,10 @@ void loop(){
     int comp_hum = ((bsec.toString()).substring(112,117)).toInt();
     int comp_gas_res = ((bsec.toString()).substring(128,130)).toInt();
 
+    string_separator(orientation.toString(), compass_array, 0);
+    float heading = (compass_array[4]).toFloat() + 28;
+    float roll = (compass_array[12]).toFloat();
+
     float temp_fusion = (temp_value+comp_temp)/2;
     float humidity_fusion = (hum_value+comp_hum)/2;
 
@@ -83,15 +91,18 @@ void loop(){
     float air_density = ((dry_air_pressure/(dry_air_constant * (temp_value+273.15))) + (water_vapor_pressure / ( water_vapor_constant * (temp_value+273.15))))*100;     //air density formula, can be used for air buoyancy 
 
     //the mass of water vapor in a unit volume of air. It is a measure of the actual water vapor content of the air.
-    double absolute_humidity = (((saturation_vapor_pressure * relative_humidity)/10) / (water_vapor_constant * temp_value)) ;   //expressed in grams per cubic meter of moist air - https://planetcalc.com/2167/
+    double absolute_humidity = (((saturation_vapor_pressure * relative_humidity)/10) / (water_vapor_constant * temp_value)) ;   //expressed in kilograms per cubic meter of moist air - https://planetcalc.com/2167/
 
     //https://ncalculators.com/meteorology/heat-index-calculator.htm
     float heat_index_part1 = -42.379+(2.04901523*temp_value)+(10.14333127*relative_humidity)-(0.22475541*temp_value*relative_humidity)-(6.83783*pow(10,-3)*pow(temp_value,2))-(5.481717*pow(10,-2)*pow(relative_humidity,2)) ;
     float heat_index_part2 = +(1.22874*pow(10, -3)*pow(temp_value,2)*relative_humidity)+(8.5282*pow(10, -4)*temp_value*pow(relative_humidity,2))-(1.99*pow(10, -6) *pow(temp_value, 2)*pow(relative_humidity, 2));
     int heat_index = heat_index_part1 + heat_index_part2;                                                                                                                                     //felt air temperature, does not take into consideration direct sunlight effect
 
+    //https://www.omnicalculator.com/physics/cloud-base#how-to-use-the-cloud-altitude-calculator
     float cloud_base_altitude_method1 = 125 * (temp_value - air_dew_point_accurate) + altitude;
     float cloud_base_altitude_method2 = ((1.8*( temp_value - air_dew_point_accurate)+64) / 4.4) * 1000 + altitude*3.28084;
+
+    int cloud_base_temperature = ((1.8*temp_value + 32) - 5.4*((cloud_base_altitude_method1 - altitude)*3.28084) - 32) * 5/9;
     
     if (voc_eq <= 5.0) voc_air_quality = "Clean Air! No Volatile Detected!";
     else if (5.0 < voc_eq <= 10.0) voc_air_quality = "Ethane Alkane Detected!";
@@ -128,6 +139,31 @@ void loop(){
     else if (pressure_value < 1007) pressure_effect = "Caution! Low pressure allowing the body's tissues to expand, affecting the nerves, which can cause migraines!";
     else if (1007 <= pressure_value <= 1022.678) pressure_effect = "Expected pressure range!";
 
+   if  (27 <= heat_index <= 32) heat_index_condition = "Caution Advised. High heat!";
+   else if (33 <= heat_index <= 39) heat_index_condition = "Increased Caution Advised. High heat!";
+   else if (40 <= heat_index <= 51) heat_index_condition = "Danger! Only stay outdoor if necessary!";
+   else if (heat_index > 52)  heat_index_condition = "Extreme Danger! Do not stay oudoor, migraine and negative skin effects possible!";
+
+    if (0 <= heading <= 11.25) compass_heading = "You are heading NORTH!";
+    else if (348.75 < heading <= 360) compass_heading = "You are heading NORTH!";
+    else if (78.75 < heading <= 101.25) compass_heading = "You are heading EAST!";
+    else if (168.75 < heading <= 191.25) compass_heading = "You are heading SOUTH!";
+    else if (258.75 < heading <= 281.25) compass_heading = "You are heading WEST!";
+
+    else if (33.75 < heading <= 56.25) compass_heading = "You are heading NORTH-EAST!"; 
+    else if (123.75 < heading <= 146.25) compass_heading = "You are heading SOUTH-EAST!";
+    else if (213.75 < heading <= 236.25) compass_heading = "You are heading SOUTH-WEST!";
+    else if (303.75 < heading <= 326.25) compass_heading = "You are heading NORTH-WEST!";
+
+    else if (11.25 < heading <= 33.75) compass_heading = "You are heading NORTH-NORTH-EAST!"; 
+    else if (56.25 < heading <= 78.75) compass_heading = "You are heading EAST-SOUTH-EAST!";
+    else if (101.25 < heading <= 123.75) compass_heading = "You are heading EAST-SOUTH-EAST!";
+    else if (146.25 < heading <= 168.75) compass_heading = "You are heading SOUTH-SOUTH-EAST!";
+    else if (191.25 < heading <= 213.75) compass_heading = "You are heading SOUTH-SOUTH-WEST!";
+    else if (236.25 < heading <= 258.75) compass_heading = "You are heading WEST-SOUTH-WEST!";
+    else if (281.25 < heading <= 303.75) compass_heading = "You are heading WEST-NORTH-WEST!";
+    else if (326.25 < heading <= 348.75) compass_heading = "You are heading NORTH-NORTH-WEST!";
+
  
     Serial.print("\r\n");
     Serial.println(String("---------------------------------------------------------------------------------------------------------"));
@@ -150,6 +186,7 @@ void loop(){
 
     Serial.println(String("Cloud Base Altitude Method 1: ") + String(cloud_base_altitude_method1, 4) + String(" m"));
     Serial.println(String("Cloud Base Altitude Method 2: ") + String(cloud_base_altitude_method2, 4) + String(" ft"));   
+    Serial.println(String("Cloud Base Temperature: ") + String(cloud_base_temperature));
     
     Serial.println(String("Heat Index: ") + String(heat_index));
     Serial.println(String("Discomfort level: ") + String(discomfort_index));
@@ -173,8 +210,40 @@ void loop(){
     Serial.println(iaq_air_quality);
     
     Serial.println(String("Tilt info: ") + tilt.toString() + String(" - Binary value:") + tilt.value());
-
+    
+    Serial.println(String(compass_heading) + String(" Heading Angle: ") + String(heading));
+    Serial.println(String("Compass Roll/Tilt: ") + String(roll, 2));
     Serial.println(String("---------------------------------------------------------------------------------------------------------"));
 
+  }
+}
+
+void string_separator(String str, String strs[], int result) {                                       //split the string into substrings, second value
+  memset(strs, 0, sizeof(strs));                                                                                  //reset char array to empty values
+  StringCount = 0;                                                                                                         //reset string index to 0
+
+  while (str.length() > 6)
+  {
+    int index = str.indexOf(' ');
+    if (index == -1) // No space found
+    {
+      strs[StringCount++] = str;
+      break;
+    }
+    else
+    {
+      strs[StringCount++] = str.substring(0, index);
+      str = str.substring(index + 1);
+    }
+  }
+
+  if (result == 1)
+  {
+    for (int i = 0; i < StringCount; i++)
+    {
+      Serial.print(String("[") + String(i) + String("] = "));
+      Serial.print(strs[i]);
+      Serial.print("\r\n");
+    }
   }
 }
