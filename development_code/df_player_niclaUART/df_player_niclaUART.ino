@@ -1,5 +1,6 @@
 #include "DFRobotDFPlayerMini.h"
 #include "Nicla_System.h"
+#include "SoftwareSerial.h"
 
 // Create the Player object
 DFRobotDFPlayerMini player;

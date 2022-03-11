@@ -20,9 +20,6 @@ void loop() {
   static auto lastCheck = millis();
   BHY2.update();
 
-
-
-
   if (millis() - lastCheck >= 1000) {
     lastCheck = millis();
     
@@ -36,25 +33,25 @@ void loop() {
     Serial.println(heading);
     Serial.println(roll);
 
-    if (0 <= heading <= 11.25) compass_heading = "You are heading NORTH!";
-    else if (348.75 < heading <= 360) compass_heading = "You are heading NORTH!";
-    else if (78.75 < heading <= 101.25) compass_heading = "You are heading EAST!";
-    else if (168.75 < heading <= 191.25) compass_heading = "You are heading SOUTH!";
-    else if (258.75 < heading <= 281.25) compass_heading = "You are heading WEST!";
+    if (0 <= heading && heading <= 11.25) compass_heading = "You are heading NORTH!";
+    else if (348.75 < heading && heading <= 360) compass_heading = "You are heading NORTH!";
+    else if (78.75 < heading && heading <= 101.25) compass_heading = "You are heading EAST!";
+    else if (168.75 < heading && heading <= 191.25) compass_heading = "You are heading SOUTH!";
+    else if (258.75 < heading && heading <= 281.25) compass_heading = "You are heading WEST!";
 
-    else if (33.75 < heading <= 56.25) compass_heading = "You are heading NORTH-EAST!"; 
-    else if (123.75 < heading <= 146.25) compass_heading = "You are heading SOUTH-EAST!";
-    else if (213.75 < heading <= 236.25) compass_heading = "You are heading SOUTH-WEST!";
-    else if (303.75 < heading <= 326.25) compass_heading = "You are heading NORTH-WEST!";
+    else if (33.75 < heading && heading <= 56.25) compass_heading = "You are heading NORTH-EAST!"; 
+    else if (123.75 < heading && heading <= 146.25) compass_heading = "You are heading SOUTH-EAST!";
+    else if (213.75 < heading && heading <= 236.25) compass_heading = "You are heading SOUTH-WEST!";
+    else if (303.75 < heading && heading <= 326.25) compass_heading = "You are heading NORTH-WEST!";
 
-    else if (11.25 < heading <= 33.75) compass_heading = "You are heading NORTH-NORTH-EAST!"; 
-    else if (56.25 < heading <= 78.75) compass_heading = "You are heading EAST-SOUTH-EAST!";
-    else if (101.25 < heading <= 123.75) compass_heading = "You are heading EAST-SOUTH-EAST!";
-    else if (146.25 < heading <= 168.75) compass_heading = "You are heading SOUTH-SOUTH-EAST!";
-    else if (191.25 < heading <= 213.75) compass_heading = "You are heading SOUTH-SOUTH-WEST!";
-    else if (236.25 < heading <= 258.75) compass_heading = "You are heading WEST-SOUTH-WEST!";
-    else if (281.25 < heading <= 303.75) compass_heading = "You are heading WEST-NORTH-WEST!";
-    else if (326.25 < heading <= 348.75) compass_heading = "You are heading NORTH-NORTH-WEST!";
+    else if (11.25 < heading && heading <= 33.75) compass_heading = "You are heading NORTH-NORTH-EAST!"; 
+    else if (56.25 < heading && heading <= 78.75) compass_heading = "You are heading EAST-SOUTH-EAST!";
+    else if (101.25 < heading && heading <= 123.75) compass_heading = "You are heading EAST-SOUTH-EAST!";
+    else if (146.25 < heading && heading <= 168.75) compass_heading = "You are heading SOUTH-SOUTH-EAST!";
+    else if (191.25 < heading && heading <= 213.75) compass_heading = "You are heading SOUTH-SOUTH-WEST!";
+    else if (236.25 < heading && heading <= 258.75) compass_heading = "You are heading WEST-SOUTH-WEST!";
+    else if (281.25 < heading && heading <= 303.75) compass_heading = "You are heading WEST-NORTH-WEST!";
+    else if (326.25 < heading && heading <= 348.75) compass_heading = "You are heading NORTH-NORTH-WEST!";
     
     Serial.println(compass_heading);
     
