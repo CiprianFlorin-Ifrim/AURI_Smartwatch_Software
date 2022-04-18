@@ -1,23 +1,31 @@
-#include "DFRobotDFPlayerMini.h"
 #include "Nicla_System.h"
-#include "SoftwareSerial.h"
+#include <DFPlayerMini_Fast.h>
 
-// Create the Player object
-DFRobotDFPlayerMini player;
+DFPlayerMini_Fast myMP3;
 
-void setup() 
+void setup()
 {
-  Serial1.begin(9600);
   nicla::begin();
-  player.begin(Serial1);
+  Serial.begin(9600);
+  Serial1.begin(9600);
+  myMP3.begin(Serial1, true);
+  delay(1000);
+
+  myMP3.volume(30);
 }
 
+void loop() {
+  while (Serial.available()) {
+    char incomingCharacter = Serial.read();
+    if (incomingCharacter == '1') {
+      Serial.println("Command activated");
+      playVoice(1, 10);
+    }
+  }
+}
 
-void loop() 
-{
-  player.volume(30);
-  player.playMp3Folder(1);
-  delay(5000);
-  player.playMp3Folder(2);
-  delay(2000);
+void playVoice(int folder, int file) {
+  myMP3.playFolder(folder, file);
+  delay(200);
+  while (!digitalRead(GPIO3));
 }
