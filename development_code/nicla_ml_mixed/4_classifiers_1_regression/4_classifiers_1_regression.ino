@@ -1,11 +1,11 @@
 // Arduino sketch
-#include <Arduino.h>
+//#include <Arduino.h>
 //#include "Nicla_System.h"
-#include "SVMClassifier.h"
-#include "XGBoostClassifier.h"
-#include "DecisionTreeClassifier.h"
-#include "GaussianNaiveBayesClassifier.h"
-#include "DecisionTreeRegressor.h"
+#include "src/ml-models/SVMClassifier.h"
+#include "src/ml-models/XGBoostClassifier.h"
+#include "src/ml-models/DecisionTreeClassifier.h"
+#include "src/ml-models/GaussianNaiveBayesClassifier.h"
+#include "src/ml-models/DecisionTreeRegressor.h"
 
 Eloquent::ML::Port::SVM SVM_classifier;
 Eloquent::ML::Port::XGBClassifier XGBoost_classifier;
