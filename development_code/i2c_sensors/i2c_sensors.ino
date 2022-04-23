@@ -26,7 +26,7 @@ Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 
 void setup() {
   nicla::begin();
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial);
 
   Serial.println("Adafruit MLX90614 test");

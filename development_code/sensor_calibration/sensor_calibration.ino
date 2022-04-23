@@ -1,5 +1,8 @@
+// coding scheme based on Google's C++ style: https://google.github.io/styleguide/cppguide.html
+
 #include <Arduino.h>
 #include <Ewma.h>
+#include <EwmaT.h>
 #include "Arduino_BHY2.h"
 #include "Nicla_System.h"
 
@@ -9,13 +12,13 @@ Sensor pressure(SENSOR_ID_BARO);
 SensorBSEC bsec(SENSOR_ID_BSEC);
 
 //filter of 0.01 too slow, 0.1 too fast
-Ewma temp_ewma_filter(0.05);   // Less smoothing - faster to detect changes, but more prone to noise
-Ewma hum_ewma_filter(0.01);   // Less smoothing - faster to detect changes, but more prone to noise
-Ewma press_ewma_filter(0.01);   // Less smoothing - faster to detect changes, but more prone to noise
+Ewma temperature_ewma(0.2);           // Less smoothing - faster to detect changes, but more prone to noise
+Ewma pressure_ewma(0.01);             // Most smoothing - less prone to noise, but very slow to detect changes
+EwmaT <int> humidity_ewma(1, 10);     // More smoothing - less prone to noise, but slower to detect changes
 
-float temp_filtered;
-float humidity_filtered;
+float temperature_filtered;
 float pressure_filtered;
+uint8_t humidity_filtered;
 
 void setup() {
   nicla::begin();
@@ -25,65 +28,84 @@ void setup() {
   humidity.begin();
   pressure.begin();
   bsec.begin();
+
+  delay(5000);
 }
+
 
 void loop() {
-  static auto lastCheck = millis();
-  BHY2.update();
+  UpdateMainSensors();            //update sensor values
 
-  float temp_value = temperature.value();
-  int hum_value = humidity.value();
-  float pressure_value = pressure.value();
+  //values have been calibrated using output equations from linear regression systems
+  float temperature_calibrated = RoundToHalfInteger((1.0095 * temperature_filtered) - 4.8051);
+  float pressure_calibrated = RoundToHalfInteger(1.00718 * pressure_filtered);
+  uint8_t humidity_calibrated = round((1.4383 * humidity_filtered) - 2.5628);
 
+  float temperature_calibrated_fahrenheit = (temperature_calibrated * 9/5) + 32;
 
-  if (millis() - lastCheck >= 5000) {
-    lastCheck = millis();
+  //print values to the user
+  Serial.println(String("\n----------------------------------------------------------------------------"));
+  Serial.println(String("Final Temperature is: ") + String(temperature_calibrated) + String(" C"));
+  Serial.println(String("Final Temperature in F is: ") + String(temperature_calibrated_fahrenheit) + String(" F"));
+  Serial.println(String("Final Pressure is: ") + String(pressure_calibrated) + String(" hPa"));
+  Serial.println(String("Final Humidity is: ") + String(humidity_calibrated) + String(" %"));
+  Serial.println(String("-----------------------------------------------------------------------------\n"));
 
+  delay(3000);
+}
 
-    float final_temp = filter(temp_value, 1);
-    float regressed_temp = round_to_half_integer(0.6990 * final_temp + 4.210);                                                   //https://www.graphpad.com/quickcalcs/linear1/
-    float final_humidity = filter(hum_value, 2);
-    //float final_pressure = filter(pressure_value, pressure_filtered, false);
+void UpdateMainSensors(void) {
+  float temperature_readings = 0, pressure_readings = 0;                            //declare and initialize variable for the sum of 10 readings
+  uint16_t humidity_readings = 0;                                                   //16bits are required to hold 10 values that can reach 10000
 
-    Serial.print("\r\n");
-    Serial.println(String("----------------------------------------------------------------------------"));
-    Serial.println("Original Temperature value: " + String(temperature.value()));
-    Serial.println("Last EWMA value: " + String(temp_filtered));
-    Serial.println(String("Final Temperature is: ") + String(final_temp) + String(" C"));
-    Serial.println(String("Regressed Temperature is: ") + String(regressed_temp) + String(" C"));
-    Serial.println(String("-----------------------------------------------------------------------------"));
-    Serial.println(String("----------------------------------------------------------------------------"));
-    Serial.println(String("Original Humidity is: ") + String(hum_value) + String(" %"));
-    Serial.println("Last EWMA value: " + String(humidity_filtered));
-    Serial.println(String("Final Humidity is: ") + String(final_humidity) + String(" %"));
-    Serial.println(String("-----------------------------------------------------------------------------"));
+  for (uint8_t i = 0; i < 10; i++) {
+    BHY2.update();                                                                  //necessary to update sensor classes
+    temperature_readings += temperature.value();                                    //sum all the values from the array to create the threshold value
+    humidity_readings += humidity.value();
+    pressure_readings += pressure.value();
+    Serial.println(String(humidity.value()) + " " + String(humidity_readings));
+    delay(50);                                                                      //get a new value every 50ms => 500ms + 12ms total runtime of loop
+  }
 
-    Serial.print("\r\n");
+  float temperature_outlier_higher_bound = 1.20 * (temperature_readings / 10);        //120% of the average of the last 10 values
+  float temperature_outlier_lower_bound = 0.80 * (temperature_readings / 10);         //80% of the average of the last 10 values
+
+  float pressure_outlier_higher_bound = 1.20 * (pressure_readings / 10);              //120% of the average of the last 10 values
+  float pressure_outlier_lower_bound = 0.80 * (pressure_readings / 10);               //80% of the average of the last 10 values
+
+  uint8_t humidity_outlier_higher_bound = 1.20 * (humidity_readings / 10);            //120% of the average of the last 10 values
+  uint8_t humidity_outlier_lower_bound = 0.80 * (humidity_readings / 10);             //80% of the average of the last 10 values
+
+  for (uint8_t enough_t, enough_p, enough_h; enough_t < 10 && enough_p < 10 && enough_h < 10;) { 
+    BHY2.update();
+    if (temperature.value() >= temperature_outlier_lower_bound && temperature.value() <= temperature_outlier_higher_bound && enough_t < 10) {
+        temperature_filtered = temperature_ewma.filter(temperature.value());
+        enough_t++;
+    } if (pressure.value() >= pressure_outlier_lower_bound && pressure.value() <= pressure_outlier_higher_bound && enough_p < 10) {
+        pressure_filtered = pressure_ewma.filter(pressure.value());
+        enough_p++;
+    } if (humidity.value() >= humidity_outlier_lower_bound && humidity.value() <= humidity_outlier_higher_bound && enough_h < 10) {
+        humidity_filtered = humidity_ewma.filter(humidity.value());
+        enough_h++;
+    } 
+    
+   delay(100);
   }
 }
 
-//first attribute is the data to use for EWMA and MA, second is for rounding to the nearest 0.5
-float filter(float data, int x)
-{
-  float store_var;
 
-  for (int i  = 0; i < 10;  i++)
-  {
-    if (x == 1) {
-      store_var =  temp_ewma_filter.filter(data);
-      temp_filtered = store_var;
-    }
-    else if (x == 2) {
-      store_var =  hum_ewma_filter.filter(data);
-      humidity_filtered = store_var;
-    }
-    delay(50);
-  }
-  return ((store_var + data) / 2);
-}
-
-
-float round_to_half_integer (float x)
-{
+float RoundToHalfInteger(float x) {
   return 0.5 * round(2.0 * x) ;
+}
+
+// https://www.ctrl-alt-test.fr/2018/making-floating-point-numbers-smaller/
+// roundb(f, 15) => keep 15 bits in the float, set the other bits to zero
+float RoundB(float f, int bits) {
+  union { int i; float f; } num;
+ 
+  bits = 32 - bits; // assuming sizeof(int) == sizeof(float) == 4
+  num.f = f;
+  num.i = num.i + (1 << (bits - 1)); // round instead of truncate
+  num.i = num.i & (-1 << bits);
+  return num.f;
 }
