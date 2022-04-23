@@ -2,12 +2,11 @@
 #include "Nicla_System.h"
 
 SensorBSEC bsec(SENSOR_ID_BSEC);
-int StringCount;
-String bsec_array[20];
+String bsec_array[4];
 
 void setup() {
   nicla::begin();
-  Serial.begin(115200);
+  Serial.begin(9600);
   BHY2.begin();
   bsec.begin();
 
@@ -20,43 +19,38 @@ void loop() {
   // Check sensor values every second
   if (millis() - lastCheck >= 2000) {
     lastCheck = millis();
-    Serial.println(bsec.toString());
-    Serial.print("\r\n");
-    string_separator(bsec.toString(), bsec_array, true);
     
+
+    StringSeparator(bsec.toString(), bsec_array);
+    unsigned short iaq = (bsec_array[0]).toInt();
+    float voc_eq = ((bsec_array[1]).toFloat())/100;
+    unsigned short co2_eq = (bsec_array[2]).toInt();
+    uint8_t accuracy = (bsec_array[3]).toInt();
+
+    Serial.println(bsec.toString());
+    Serial.println(String("Volatile Organic Gasses: ") + String(voc_eq, 2) + String(" ppm"));
+    Serial.println(String("Estimation of CO2 levels: ") + String(co2_eq) + String(" ppm"));
+    Serial.println(String("Air Quality Index is: ") + String(iaq));
+    Serial.println(String("IAQ Sensor Accuracy Level: ") + String(accuracy));
+    Serial.print("\r\n");
+    
+
   }
 }
 
 
+void StringSeparator(String str, String strs[]) {                                       //split the string into substrings, second value
+  memset(strs, 0, sizeof(strs));                                                                                  //reset char array to empty values
+  uint8_t StringCount = 0;                                                                                                         //reset string index to 0
 
-void string_separator(String str, String strs[], bool result) {                                       //split the string into substrings, second value
-  //memset(strs, 0, sizeof(strs));                                                                                  //reset char array to empty values
-  StringCount = 0;                                                                                                         //reset string index to 0
-
-  while (str.length() > 0)
-  {
-    int index = str.indexOf(' ');
-    if (index == -1) // No space found
-    {
-      Serial.println("If Statement " + String(index) + "  " + String(StringCount));
-      strs[StringCount++] = str;
-      break;
-    }
-    else
-    {
-      Serial.println("Else Statement " + String(index) + "  " + String(StringCount));
-      if (isDigit(str.charAt(StringCount+0))) {strs[StringCount++] = str.substring(0, index);}
-      str = str.substring(index + 1);
-    }
-  }
-
-  if (result == true)
-  {
-    for (int i = 0; i < StringCount; i++)
-    {
-      Serial.print(String("[") + String(i) + String("] = "));
-      Serial.print(strs[i]);
-      Serial.print("\r\n");
+  while (str.length() > 0) {
+    int8_t index = str.indexOf(' ');
+    if (index == -1) {                                                                              // No space found
+        strs[StringCount++] = str;
+        break;
+    } else {
+        if (isDigit(str.charAt(StringCount+0))) {strs[StringCount++] = str.substring(0, index);}
+        str = str.substring(index + 1);
     }
   }
 }

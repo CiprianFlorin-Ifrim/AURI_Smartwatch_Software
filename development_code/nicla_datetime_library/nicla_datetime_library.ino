@@ -3,7 +3,7 @@
 #include "Nicla_System.h"
 
 // single character message tags
-#define TIME_HEADER   'T'   // Header tag for serial time sync message
+#define TIME_HEADER  'T'   // Header tag for serial time sync message
 #define TIME_REQUEST  7     // ASCII bell character requests a time sync message 
 
 static boolean isLongFormat = true;
@@ -22,21 +22,16 @@ void loop() {
     }
   }
     if (timeStatus() != timeNotSet) {
-      digitalClockDisplay();
+      Serial.println(String(hour()) + " " + String(minute()));
+      Serial.println(String(day()) + " " + String(month()) + " " + String(year()));
     }
   delay(1000);
 }
 
-void digitalClockDisplay() {
-  // digital clock display of the time
-  Serial.println(String(hour()) + " " + String(minute()));
-  Serial.println(String(day()) + " " + String(month()) + " " + String(year()));
-  Serial.println();
-}
 
 void processSyncMessage() {
   unsigned long pctime;
-  const unsigned long DEFAULT_TIME = 1357041600; // Jan 1 2013 - paul, perhaps we define in time.h?
+  const unsigned long DEFAULT_TIME = 1357041600; // Jan 1 2013
 
   pctime = Serial.parseInt();
   if ( pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)

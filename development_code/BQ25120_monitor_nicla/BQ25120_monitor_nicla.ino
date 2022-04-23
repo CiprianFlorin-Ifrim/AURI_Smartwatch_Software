@@ -3,12 +3,12 @@
 
 byte battery_status;
 byte battery_fault;
-const char* battery_level;
+uint8_t battery_level;
 
 void setup() {
   Serial.begin(9600);
   nicla::begin();
-  Wire1.begin();                                          // internal I2C communication to BHI260/PWM/LEDS/CHARGER IC
+  //Wire1.begin();                                          // internal I2C communication to BHI260/PWM/LEDS/CHARGER IC
 
   pwmCDHigh();                                            // make sure we can talk to BQ25120A
   bq25120_setMaxCurrentMinVoltage(150, 3.0, true);        // set max current to 150mA, min voltage before fast recharge to 3.0V

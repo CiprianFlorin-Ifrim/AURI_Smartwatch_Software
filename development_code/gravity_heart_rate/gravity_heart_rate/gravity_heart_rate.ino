@@ -1,21 +1,22 @@
-#include "Arduino.h"
-//#include "Arduino_BHY2.h"
 #include "Nicla_System.h"
-#define heartratePin A0
 #include "DFRobot_Heartrate.h"
 
-DFRobot_Heartrate heartrate(DIGITAL_MODE); ///< ANALOG_MODE or DIGITAL_MODE
+#define heartratePin A0
+DFRobot_Heartrate heartrate(ANALOG_MODE); ///< ANALOG_MODE or DIGITAL_MODE
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
 }
 
 void loop() {
-  uint8_t rateValue;
+  HeartMonitor();
+}
+
+void HeartMonitor() {
   heartrate.getValue(heartratePin); ///< A1 foot sampled values
-  rateValue = heartrate.getRate(); ///< Get heart rate value 
-  if(rateValue)  {
-    Serial.println(rateValue);
+  uint8_t rate_value = heartrate.getRate(); ///< Get heart rate value 
+  if(rate_value)  {
+    Serial.println(rate_value);
   }
-  delay(20);
+  delay(10);
 }
