@@ -124,7 +124,9 @@ void loop() {
     float laser_object_temp = mlx.readObjectTempC() - 3.5;                                                                              //the sensor has been calibrated to detect through a tempered glass screen the human skin temeperature compared to the regular reading at 5cm ( most accurate)
 
     float sea_level_pressure = 1013.25; 
-    uint16_t altitude = ((pow((sea_level_pressure / pressure_calibrated), (1 / 5.257)) - 1) * (temperature_calibrated + 273.15)) / 0.0065;                                                                                                                                                          //altitude hypsometric formula
+    uint16_t altitude = ((pow((sea_level_pressure / pressure_calibrated), (1 / 5.257)) - 1) * (temperature_calibrated + 273.15)) / 0.0065;                       //altitude hypsometric formula
+   
+    float equivalent_sea_pressure = pressure_calibrated * pow((1 - ((0.0065 * altitude)/(temperature_calibrated + 0.0065 * altitude + 273.15))), -5.257);  
 
     uint8_t discomfort_index = temperature_calibrated - 0.55 * (1 - 0.01 * humidity_calibrated) * (temperature_calibrated - 14.5);                                                                                                                                                                                 //discomfort index formula
 
@@ -136,6 +138,7 @@ void loop() {
     float saturation_vapor_pressure = 6.1078 * pow(10, ((7.5 * temperature_calibrated) / (temperature_calibrated + 237.3)));                                                                                                                                                             //from https://www.omnicalculator.com/physics/air-density#how-to-calculate-the-air-density
     float water_vapor_pressure = (saturation_vapor_pressure * relative_humidity) / 100;                                                                                                                                                                          //multiplication of saturation vapor pressure with the relative humidity, divided by 100%
     float dry_air_pressure = pressure_calibrated - water_vapor_pressure;
+    
     float dry_air_constant = 287.058, water_vapor_constant = 461.495;                                                                                                              //specific gas constant for dry air equal in J/(kg·K) //specific gas constant for water vapor in J/(kg·K)
     float air_density = 100 * ((dry_air_pressure / (dry_air_constant * (temperature_calibrated + 273.15)))                                                                                       //air density formula, can be used for air buoyancy
                         + (water_vapor_pressure / ( water_vapor_constant * (temperature_calibrated + 273.15))));
@@ -145,9 +148,9 @@ void loop() {
 
     //the regression equation of Rothfusz used by the US National Weather Service: https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
     float heat_index_Rothfusz = -42.379 + (2.04901523 * temperature_fahrenheit) - (0.00000199 * pow(temperature_fahrenheit, 2) * pow(relative_humidity, 2))
-                                - (0.22475541 * temperature_fahrenheit * relative_humidity) - (0.00683783 * pow(temperature_fahrenheit, 2))
-                                - (0.05481717 * pow(relative_humidity, 2)) + (0.00122874 * pow(temperature_fahrenheit, 2) * relative_humidity)
-                                + (0.00085282 * temperature_fahrenheit * pow(relative_humidity, 2)) + (10.14333127 * relative_humidity);                                                                                     //felt air temperature, does not take into consideration direct sunlight effect
+                                -(0.22475541 * temperature_fahrenheit * relative_humidity) - (0.00683783 * pow(temperature_fahrenheit, 2))
+                                -(0.05481717 * pow(relative_humidity, 2)) + (0.00122874 * pow(temperature_fahrenheit, 2) * relative_humidity)
+                                +(0.00085282 * temperature_fahrenheit * pow(relative_humidity, 2)) + (10.14333127 * relative_humidity);                                                                                     //felt air temperature, does not take into consideration direct sunlight effect
     float heat_index_Steadman = 0.5 * (temperature_fahrenheit + 61.0 + ((temperature_fahrenheit - 68.0) * 1.2) + (relative_humidity * 0.094));
 
     float heat_index_lowRH_adjustment = ((13 - relative_humidity) / 4) * sqrt((17 - abs(temperature_fahrenheit - 95)) / 17);                                  //if the RH is less than 13% and the temperature is between 80 and 112 degrees F, then the following adjustment is subtracted from HI
@@ -250,6 +253,7 @@ void loop() {
     Serial.println(String("Temperature in Fahrenheit is: ") + String(temperature_fahrenheit) + String(" F"));
     Serial.println(String("Humidity is: ") + String(humidity_calibrated) + String(" %"));
     Serial.println(String("Pressure: ") + String(pressure_calibrated) + String(" hPa"));
+    Serial.println(String("Equivalent Sea Level Pressure: ") + String(equivalent_sea_pressure) + String(" hPa"));
 
     Serial.println("Visible Light: " + String(visible_light));
     Serial.println("Infrared Light: " + String(infrared_light));
@@ -260,11 +264,11 @@ void loop() {
     Serial.println(String("Altitude: ") + String(altitude) + String(" m"));
     Serial.println(String("Relative Humidity: ") + String(relative_humidity) + String(" %"));
     Serial.println(String("Air Dew Point Accurate: ") + String(air_dew_point) + String(" C"));
-    Serial.println(String("Saturation Vapor Pressure: ") + String(saturation_vapor_pressure));
+    Serial.println(String("Saturation Vapor : ") + String(saturation_vapor_pressure) );
     Serial.println(String("Water Vapor Pressure: ") + String(water_vapor_pressure) + String(" hPa"));
     Serial.println(String("Dry Air Pressure ") + String(dry_air_pressure) + String(" hPa"));
     Serial.println(String("Air Density: ") + String(air_density) + String(" kg/m^3"));
-    Serial.println(String("Absolute Humidity: ") + String(absolute_humidity, 4) + String(" %"));
+    Serial.println(String("Absolute Humidity: ") + String(absolute_humidity, 4) + String(" kg/m3"));
 
     Serial.println(String("Cloud Base Altitude Ground Level: ") + String(cloud_base_altitude_groundlevel, 4) + " m");
     Serial.println(String("Cloud Base Altitude Sea Level: ") + String(cloud_base_altitude_sealevel, 4) + " m");

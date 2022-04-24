@@ -92,16 +92,10 @@ void loop()
     Y[3] = GaussianNB_classifier.predict(X);
     Y[4] = decisiontree_regressor.predict(X);
 
-    Serial.println("\nThe weather has been identified by the Support Vector Machines Classifier as: " + String(Y[0]));
-    Serial.println("The weather has been identified by the XGBoost Classifier as: " + String(Y[1]));
-    Serial.println("The weather has been identified by the Decision Tree Classifier as: " + String(Y[2]));
-    Serial.println("The weather has been identified by the Gaussian Naive Bayes Classifier as: " + String(Y[3]));
-    Serial.println("The predicted amount of rainfall in millimeters in: " + String(Y[4]) + " mm");
-
     microphone_inference_end();
     startInferencing = false;
   }
-  delay(100);
+  delay(50);
 }
 
 void receiveEvent(int howMany) {
