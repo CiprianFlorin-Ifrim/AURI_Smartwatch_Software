@@ -21,11 +21,11 @@ void setup()
 
 void loop()
 {
-  playVoice(1, 4);
-  playVoice(1, 2);
-  playVoice(1, 1);
-  playVoice(1, 3);
-  playVoice(1, 5);
+  playVoice(1, 4);      //play file 4 in folder 1
+  playVoice(1, 2);      //play file 4 in folder 1
+  playVoice(1, 1);      //play file 4 in folder 1
+  playVoice(1, 3);      //play file 4 in folder 1
+  playVoice(1, 5);      //play file 4 in folder 1
   
 
 }
@@ -33,5 +33,5 @@ void loop()
 void playVoice(int folder, int file) {
   myMP3.playFolder(folder, file);
   delay(150);
-  while (!digitalRead(GPIO3));
+  while (!digitalRead(GPIO3));         //wait until the file has finished playing (MCU GPIO3 connected to Busy pin on DFPlayer Mini)
 }

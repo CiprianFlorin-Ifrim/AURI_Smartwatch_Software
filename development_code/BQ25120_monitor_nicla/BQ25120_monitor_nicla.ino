@@ -41,3 +41,4 @@ void update_battery_info(void) {
   battery_status = bq25120_getStatus();
   battery_fault = bq25120_getFaults();
 }
+
