@@ -5,18 +5,20 @@
 
 #include "Nicla_System.h"
 #include <DFPlayerMini_Fast.h>
+//#include "DFRobotDFPlayerMini.h"
 
 DFPlayerMini_Fast myMP3;
+//DFRobotDFPlayerMini myMP3;
 
 void setup()
 {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial1.begin(9600);
-  myMP3.begin(Serial1, true, false);
+  myMP3.begin(Serial1, true);
   delay(1000);
 
   Serial.println("Setting volume to max");
-  myMP3.volume(30);
+  myMP3.volume(20);
 }
 
 void loop()
