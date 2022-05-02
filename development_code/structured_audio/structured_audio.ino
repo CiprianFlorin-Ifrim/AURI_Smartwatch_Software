@@ -5,10 +5,8 @@
 
 #include "Nicla_System.h"
 #include <DFPlayerMini_Fast.h>
-//#include "DFRobotDFPlayerMini.h"
 
 DFPlayerMini_Fast myMP3;
-//DFRobotDFPlayerMini myMP3;
 
 void setup()
 {
@@ -18,22 +16,18 @@ void setup()
   delay(1000);
 
   Serial.println("Setting volume to max");
-  myMP3.volume(20);
+  myMP3.volume(30);
 }
 
 void loop()
 {
-  playVoice(1, 4);      //play file 4 in folder 1
-  playVoice(1, 2);      //play file 4 in folder 1
-  playVoice(1, 1);      //play file 4 in folder 1
-  playVoice(1, 3);      //play file 4 in folder 1
-  playVoice(1, 5);      //play file 4 in folder 1
-  
-
+  myMP3.playFolder(1, 4);
+  delay(5000);
+  //playVoice(1, 4);
 }
 
 void playVoice(int folder, int file) {
   myMP3.playFolder(folder, file);
   delay(150);
-  while (!digitalRead(GPIO3));         //wait until the file has finished playing (MCU GPIO3 connected to Busy pin on DFPlayer Mini)
+  while (!digitalRead(GPIO3));
 }
