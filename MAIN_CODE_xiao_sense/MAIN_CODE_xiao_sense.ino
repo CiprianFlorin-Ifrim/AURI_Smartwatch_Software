@@ -45,7 +45,6 @@ bool startInferencing = false;
 
 void setup()                //Arduino setup function
 {
-  Serial.begin(9600);    // start serial for output
   Wire.begin(slaveAddress);     // join i2c bus with address #8
   Wire.onRequest(requestEvent); // register event
   Wire.onReceive(receiveEvent); // register event
