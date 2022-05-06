@@ -54,8 +54,9 @@ Ewma temperature_BME688_ewma(0.2);                                              
 Ewma pressure_BMP390_ewma(0.01);                                                                                                                                                      // most smoothing (alpha value) - less prone to noise, but very slow to detect changes
 Ewma humidity_BME688_ewma(0.05);                                                                                                                                                      // more smoothing (alpha value) - less prone to noise, but slow to detect changes
                    
-float temperature_BMP390_filtered, temperature_BME688_filtered, pressure_BMP390_filtered, humidity_BME688_filtered;                                                                   // define global float variables for the filtered sensor outputs
-bool charging_flag = false;                                                                                                                                                           // charging flag used to output the voice command of charging only once
+float   temperature_BMP390_filtered, temperature_BME688_filtered, pressure_BMP390_filtered, humidity_BME688_filtered;                                                                 // define global float variables for the filtered sensor outputs
+bool    charging_flag = false;                                                                                                                                                        // charging flag used to output the voice command of charging only once
+uint8_t volume_level  = 25;
 
 
 
@@ -77,7 +78,7 @@ void setup() {
 
   Serial1.begin(9600);                                                                                                                                                                // start Hardware UART at 9600 bits per second baud rate
   DFPlayer.begin(Serial1, false);                                                                                                                                                     // start the DFPlayer process with Serial 1 and disable debug mode
-  DFPlayer.volume(28);                                                                                                                                                                // set default DFPlayer Mini volume as 25 >> maximum is 30
+  DFPlayer.volume(volume_level);                                                                                                                                                      // set default DFPlayer Mini volume as 25 >> maximum is 30
 
   battery.onDemand(8, HIGH);                                                                     
   battery.begin(3300, 2.14, &asigmoidal);                                                                                                                                             // start battery system set with a LiPo battery (asigmoidal draining) on a 3.3v MCU with 2.14 voltage ratio 
@@ -104,12 +105,12 @@ void loop() {
   uint8_t  discomfort_index = DiscomfortComputation(((1.0095 * bsec.comp_t()) - 4.8051), round((1.4383 * bsec.comp_h()) - 2.5628));                                                   // compute discomfort index by using function
   uint16_t uv_index         = (uv.readUV()) / 100.0;                                                                                                                                  // SI1145 Sensor Output >> Estimated UV Index based on the rapport Infrared and Visible Light
   
-  uint16_t checks[8]          = {pressure.value(), pressure.value(), discomfort_index, uv_index, bsec.iaq(), bsec.co2_eq(), bsec.b_voc_eq(), bsec.b_voc_eq()};                        // array holding all sensor values
-  uint16_t conditions[8]      = {1007, 1023, 32, 8, 225, 2100, 10, 15};                                                                                                               // array holding all conditions for each specific sensor for what would be considered extreme values/health adverse effects
-  uint16_t voice_outputs[8]   = {368, 369, 375, 1130, 364, 357, 348, 349};                                                                                                            // array containing all voice lines for each sensor based on the specific extreme condition
-  bool     condition_flags[8] = {false, false, false, false, false, false, false, false};                                                                                             // array holding flags to not repeat the voice line continously, as soon as the condition is cleared, reset the flag
+  uint16_t checks[9]          = {pressure.value(), pressure.value(), discomfort_index, uv_index, bsec.iaq(), bsec.co2_eq(), bsec.b_voc_eq(), bsec.b_voc_eq(), bq25120_getLevel()};    // array holding all sensor values
+  uint16_t conditions[9]      = {1007, 1023, 32, 8, 225, 2100, 10, 15, 1};                                                                                                            // array holding all conditions for each specific sensor for what would be considered extreme values/health adverse effects
+  uint16_t voice_outputs[9]   = {368, 369, 375, 1130, 364, 357, 348, 349, 1135};                                                                                                      // array containing all voice lines for each sensor based on the specific extreme condition
+  bool     condition_flags[9] = {false, false, false, false, false, false, false, false, false};                                                                                      // array holding flags to not repeat the voice line continously, as soon as the condition is cleared, reset the flag
   
-  for (uint8_t i = 0; i < 8; i++) {                                                                                                                                                   // for loop to consider all conditions in an elegant manner
+  for (uint8_t i = 0; i < 9; i++) {                                                                                                                                                   // for loop to consider all conditions in an elegant manner
     if (i == 0 && checks[i] <= conditions[i] && condition_flags[i] == false){                                                                                                         // if the array element is 0 (pressure) and the value is lower, then proceed                                                                                                                                              
         condition_flags[i] == true;                                                                                                                                                   // make status flag TRUE
         PlayVoice(voice_outputs[i]);                                                                                                                                                  // and play specific condition voice line
@@ -128,7 +129,7 @@ void loop() {
 //------------------------------------------------------------------------------------------------------------------------------------MAIN CODE - SENSOR COMPUTATION - OUTPUT SELECTION-------------------------------------------------------------------------------------------------------------------------------------
   int activation = uv.readIR();
   if (activation >= 300) {                                                                                                                                                            // if the gesture event was recognised, then start the computation and inform the user
-    //initialise system >> inform user
+    // initialise system >> inform user
     nicla::leds.setColor(red);                                                                                                                                                        // set the led colour of the Nicla Sense ME to RED as a visual cue to the user that the system has been activated
     uint8_t random_listening = random(1, 11);                                                                                                                                         // returns a random number between min(1) and max-1(10) >> equivalent to the 10 listening voice lines available
     DFPlayer.play(random_listening + 1101);                                                                                                                                           // play audio to inform user that the system is listening >> instead of the voice function that waits for the file to end first                                                                                                                                                                                      
@@ -176,7 +177,7 @@ void loop() {
     float heat_index_lowRH_adjustment  = ((13 - relative_humidity) / 4) * sqrt((17 - abs(temperature_fusion_fahrenheit - 95)) / 17);                                                  // if the RH is less than 13% and the temperature is between 80 and 112 degrees F, then the following adjustment is subtracted from HI
     float heat_index_highRH_adjustment = ((relative_humidity - 85) / 10) * ((87 - temperature_fusion_fahrenheit) / 5);                                                                // if the RH is greater than 85% and the temperature is between 80 and 87 degrees F, then the following adjustment is added to HI
 
-    //heat index decision tree
+    // heat index decision tree
     float heat_index = 0;                                                                                                                                                             // initialise heat index variable
     if (heat_index_Steadman >= 80) {                                                                                                                                                  // if this heat index value is 80 degrees F or higher, the full regression equation of Rothfusz (along with any adjustment) is applied
       if (relative_humidity < 13 && temperature_fusion_fahrenheit > 80 && temperature_fusion_fahrenheit < 112) {
@@ -200,7 +201,7 @@ void loop() {
 
     // wait for the Xiao Sense to finish recording the audio and performing the classification
     delay(2100);                                                                                                                                                                      // delay for time to send everything & time to unpack on the Xiao Sense & 350ms reaction delay & recording (1650ms)  >> circa 2050ms
-    PlayVoice(int(round(random_listening/2)) + 1132);                                                                                                                                 // play random voice line betwee 
+    PlayVoice(int(round(random_listening/2)) + 1135);                                                                                                                                 // play random voice line betwee 
     
     nicla::leds.setColor(off);                                                                                                                                                        // turn the LED off
 
@@ -283,10 +284,10 @@ void loop() {
         TemperatureFormatted(air_dew_point);                                                                                                                                          // air dew point temperature formatted output  
 
         //environment conditions outputs in a single array to save code footprint through a for loop
-        uint16_t environment_output[] = {0, 53, int(round(temperature_fusion_fahrenheit) + 1138), 0, 4, int(round(humidity_BME688_regressed + 144)), 0, 5, int(round(relative_humidity + 144)),
-                                           0, 6, int((absolute_humidity * 100) + 2137), 1122, 0, 7, int(round(pressure_BMP390_regressed - 949 + 244)), 0, 8, int(round(saturation_vapor_pressure + 1138)),
-                                           0, 9, int(round(water_vapor_pressure + 1138)), 0, 10, int(round(dry_air_pressure - 949 + 244)), 0, 11, int(round(equivalent_sea_pressure - 949 + 244)),
-                                           0, 1132, int((air_density * 100) + 2137), 1121, 0, 1113, int(round(visible_light) + 1138), 0, 1114, int(round(infrared_light) + 1138), 0, 1126, int(round(uv_index) + 1138)};
+        uint16_t environment_output[] = {0, 53, int(round(temperature_fusion_fahrenheit) + 1141), 0, 4, int(round(humidity_BME688_regressed + 144)), 0, 5, int(round(relative_humidity + 144)),
+                                           0, 6, int((absolute_humidity * 100) + 2140), 1122, 0, 7, int(round(pressure_BMP390_regressed - 949 + 244)), 0, 8, int(round(saturation_vapor_pressure + 1141)),
+                                           0, 9, int(round(water_vapor_pressure + 1141)), 0, 10, int(round(dry_air_pressure - 949 + 244)), 0, 11, int(round(equivalent_sea_pressure - 949 + 244)),
+                                           0, 1132, int((air_density * 100) + 2140), 1121, 0, 1113, int(round(visible_light) + 1141), 0, 1114, int(round(infrared_light) + 1141), 0, 1126, int(round(uv_index) + 1141)};
                                            
         for (uint8_t i = 0; i < 39; i++) {                                                                                                                                            // loop through all array elements
           if (environment_output[i] == 0) delay(200);                                                                                                                                 // if the array element in position "i" is a 0, perform a 200ms delay
@@ -298,20 +299,20 @@ void loop() {
         if (gas_resistance_BME688 < 100) PlayVoice(49);                                                                                                                               // Voice Line: "The sensor needs to calibrate to the current environment before outputting an accurate gas resistance reading!"
         else if (gas_resistance_BME688 < 1000) {
           PlayVoice(50);                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"
-          PlayVoice(int(gas_resistance_BME688) + 1138);                                                                                                                               // Voice Line: number between 0 to 999 representing the gas resistance in ohms
+          PlayVoice(int(gas_resistance_BME688) + 1141);                                                                                                                               // Voice Line: number between 0 to 999 representing the gas resistance in ohms
           PlayVoice(52);                                                                                                                                                              // Voice Line: "ohms"                              
         } else {
           uint8_t  gas_kilo_ohms = gas_resistance_BME688 / 1000;                                                                                                                      // get the kiloohms part of the gas resistance
           uint16_t gas_ohms      = gas_resistance_BME688 % 1000;                                                                                                                      // get the ohms part of the gas resistance
         
           PlayVoice(50);                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"
-          PlayVoice(int(gas_kilo_ohms) + 1138);                                                                                                                                       // Voice Line: number between 0 to 999 representing the gas kiloohms part
+          PlayVoice(int(gas_kilo_ohms) + 1141);                                                                                                                                       // Voice Line: number between 0 to 999 representing the gas kiloohms part
           PlayVoice(51);                                                                                                                                                              // Voice Line: "kilo-ohms"
       
           if (gas_ohms != 0) {
             delay(100);                                                                                                                                                               // delay between voice lines for smoother output
             PlayVoice(23);                                                                                                                                                            // Voice Line: "and"
-            PlayVoice(int(gas_ohms) + 1138);                                                                                                                                          // Voice Line: number between 1 and 999
+            PlayVoice(int(gas_ohms) + 1141);                                                                                                                                          // Voice Line: number between 1 and 999
             if (gas_ohms == 1) PlayVoice(1120);                                                                                                                                       // Voice Line: "ohm"  
             else PlayVoice(52);                                                                                                                                                       // Voice Line: "ohms"
           }
@@ -345,7 +346,7 @@ void loop() {
           if (temperature_regressed_fusion >= 4) {                                                                                                                                    // only output the heat index condition if it is higher than 4 degrees Celsius
             if (heat_index_values[n] < heat_index && heat_index <= heat_index_values[n+1]) {                                                                                          // compare condition from element i with element i+1 for the correct output
               PlayVoice(29);                                                                                                                                                          // Voice Line: "In terms of the effects of the environment on your health. The heat index stands at:"
-              PlayVoice(int(round(heat_index)) + 1138);                                                                                                                               // Voice Line: heat index value (as number)
+              PlayVoice(int(round(heat_index)) + 1141);                                                                                                                               // Voice Line: heat index value (as number)
               PlayVoice(heat_index_output[n] + 375);                                                                                                                                  // output the specific heat index condition voice line
             }
           } else PlayVoice(1125);                                                                                                                                                     // Voice Line: "The Heat Index Condition cannot be calculated as the environment temperature is too low. Please consider the temperature as the absolute truth!"
@@ -358,7 +359,7 @@ void loop() {
         for (uint8_t l = 0; l < 6; l++) {                                                                                                                                             // loop through the first 6 elements of the values array, always comparing i and i+1
           if (discomfort_values[l] < discomfort_index && discomfort_index <= discomfort_values[l+1]) {                                                                                // compare condition from element i with element i+1 for the correct output
             PlayVoice(56);                                                                                                                                                            // Voice Line: "The discomfort index is currently at:" 
-            PlayVoice(int(abs(discomfort_index)) + 1138);                                                                                                                             // output as a voice line the discomfort index number
+            PlayVoice(int(abs(discomfort_index)) + 1141);                                                                                                                             // output as a voice line the discomfort index number
             PlayVoice(discomfort_output[l] + 369);                                                                                                                                    // output the specific discomfort index condition voice line
           }
         }
@@ -382,7 +383,7 @@ void loop() {
         // output BSEC sensor accuracy before proceeding with the BSEC readouts and health effects
         delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(63);                                                                                                                                                                // Voice Line: "Checking the system status. The BSEC sensor accuracy is at the level:" 
-        PlayVoice(bsec_accuracy + 1138);                                                                                                                                              // output the BSEC accuracy level
+        PlayVoice(bsec_accuracy + 1141);                                                                                                                                              // output the BSEC accuracy level
         
         delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
         uint16_t      iaq_values[8] = {0, 50, 100, 150, 200, 250, 350, 500};                                                                                                          // array containing air quality index conditions for the correct health effect output 
@@ -390,7 +391,7 @@ void loop() {
         for (uint8_t j = 0; j < 7; j++) {                                                                                                                                             // loop through the first 7 elements of the values array, always comparing i and i+1
           if (iaq_values[j] < air_quality && air_quality <= iaq_values[j+1]) {                                                                                                        // compare condition from element i with element i+1 for the correct output                                                                                             
             PlayVoice(30);                                                                                                                                                            // Voice Line: "The air quality of your environment resides at:"
-            PlayVoice(air_quality + 1138);                                                                                                                                            // output air quality index as a number between 0 and 500
+            PlayVoice(air_quality + 1141);                                                                                                                                            // output air quality index as a number between 0 and 500
             PlayVoice(37);                                                                                                                                                            // Voice Line: "Which means the air is:"
             PlayVoice(iaq_output[j] + 359);                                                                                                                                           // output the specific air quality index condition voice line
           }
@@ -514,9 +515,9 @@ void loop() {
         if (timeStatus() != timeNotSet) {
           //output time
           PlayVoice(22);                                                                                                                                                              // Voice Line: "The current time is:"
-          PlayVoice(int(hour()) + 1138);                                                                                                                                              // play the voice line between 0 and 23 representing the hour
-          PlayVoice(int(minute()) + 1138);                                                                                                                                            // play a number between 0 and 59 representing the minutes
-          if (int(minute()) == 0) PlayVoice(int(minute()) + 1138);                                                                                                                    // if the minute is equal to 00, then play 0 twice (example: thirteen zero zero >> 13:00)
+          PlayVoice(int(hour()) + 1141);                                                                                                                                              // play the voice line between 0 and 23 representing the hour
+          PlayVoice(int(minute()) + 1141);                                                                                                                                            // play a number between 0 and 59 representing the minutes
+          if (int(minute()) == 0) PlayVoice(int(minute()) + 1141);                                                                                                                    // if the minute is equal to 00, then play 0 twice (example: thirteen zero zero >> 13:00)
           
           //output date
           delay(200);                                                                                                                                                                 // delay between voice lines for smoother output
@@ -527,16 +528,41 @@ void loop() {
           uint8_t year_first_half = year() / 100;                                                                                                                                     // find the first part of the year number (example 2022 = 20)
           uint8_t year_second_half = year() % (year_first_half * 100);                                                                                                                // find the second part of the year number (example 2022 = 22)
 
-          PlayVoice(year_first_half + 1138);                                                                                                                                          // Play the number 0 - 99 for the first part of the year
+          PlayVoice(year_first_half + 1141);                                                                                                                                          // Play the number 0 - 99 for the first part of the year
           if (year_second_half == 0) PlayVoice(1124);                                                                                                                                 // Voice Line: "hundred"
-          else PlayVoice(year_second_half + 1138);                                                                                                                                    // Play the number 0 - 99 for the second part of the year
+          else PlayVoice(year_second_half + 1141);                                                                                                                                    // Play the number 0 - 99 for the second part of the year
         } else PlayVoice(62);                                                                                                                                                         // Voice Line "The watch has not been setup. Please dock the watch and use the PC executable to sync the time and date!"
        
         break;
       }
 
-//----------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 9 >> Command: "How is it going to be today?"------------------------------------------------------------------------------------------------------------------
-      case 9: 
+//------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 9 >> Command: "Reduce the volume by 10!"---------------------------------------------------------------------------------------------------------------------
+      case 9:
+      {
+        if (volume_level < 30) {
+          volume_level = volume_level - 10;                                                                                                                                             // reduce the volume variable by 10
+          DFPlayer.volume(volume_level);                                                                                                                                                // set DFPlayer Mini volume to the specific variable value 
+          PlayVoice(61);                                                                                                                                                                // Voice Line: "The volume has been changed to:" 
+          PlayVoice(volume_level + 1141);                                                                                                                                               // play the voice line between 0 and 30 representing the volume level
+        } else if (volume_level == 30) PlayVoice(1134);                                                                                                                                 // Voice Line: "Volume is at the highest level of 30! It cannot be increased further!"
+        break;
+      }
+
+//-----------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 10 >> Command: "Increase the volume by 5!"--------------------------------------------------------------------------------------------------------------------
+
+      case 10:
+      {
+        if (volume_level > 5) {
+          volume_level = volume_level + 5;                                                                                                                                              // increase the volume variable by 5
+          DFPlayer.volume(volume_level);                                                                                                                                                // set DFPlayer Mini volume to the specific variable value    
+          PlayVoice(61);                                                                                                                                                                // Voice Line: "The volume has been changed to:" 
+          PlayVoice(volume_level + 1141);                                                                                                                                               // play the voice line between 0 and 30 representing the volume level
+        } else if (volume_level <= 5) PlayVoice(1133);                                                                                                                                  // Voice Line: "Volume is at the lowest level of 5! It cannot be decreased further!"
+        break;
+      }
+
+//----------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 11 >> Command: "How is it going to be today?"------------------------------------------------------------------------------------------------------------------
+      case 11: 
       {
         uint8_t allLabels[4], bestLabels[2] = {5, 5}, primes[5] = {2, 3, 5, 7, 11};                                                                                                   // declare and initialise arrays for computations
         int product = 1;
@@ -562,36 +588,36 @@ void loop() {
             PlayVoice(1123);                                                                                                                                                          // Voice Line: "A computed value higher than 35"
         } else {
             PlayVoice(752);                                                                                                                                                           // Voice Line: "In view of the weather classification, I can forecast the precipitation amount to:"
-            PlayVoice(int(dataReceived[4] * 100) + 2137);                                                                                                                             // Voice Line: number between 0.01 and 35.00
+            PlayVoice(int(dataReceived[4] * 100) + 2140);                                                                                                                             // Voice Line: number between 0.01 and 35.00
             PlayVoice(1118);                                                                                                                                                          // Voice Line: "millimeters"
         }
         
         break;
       }
 
-//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 10----------------------------------------------------------------------------------------------------------------------------------------  
-      case 10:
+//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 12----------------------------------------------------------------------------------------------------------------------------------------  
+      case 12:
       {
         PlayVoice(57);                                                                                                                                                                // Voice Line: "You spoke too quietly, or there was too much noise in your surroundings. PLEASE REPEAT THE COMMAND!"
         break;
       }
       
-//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 11----------------------------------------------------------------------------------------------------------------------------------------    
-      case 11:
+//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 13----------------------------------------------------------------------------------------------------------------------------------------    
+      case 13:
       {
         PlayVoice(58);                                                                                                                                                                // Voice Line: "Software issue detected. Failed to setup audio sampling!"
         break;
       }
-//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 12---------------------------------------------------------------------------------------------------------------------------------------- 
-      case 12:
+//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 14---------------------------------------------------------------------------------------------------------------------------------------- 
+      case 14:
       {
         PlayVoice(59);                                                                                                                                                                // Voice Line: "Software or Hardware issue detected. Failed to record audio!"
         break;
       }
       
-//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 13---------------------------------------------------------------------------------------------------------------------------------------- 
-      case 13:
-      {
+//------------------------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 15---------------------------------------------------------------------------------------------------------------------------------------- 
+      case 15: 
+      {      
         PlayVoice(60);                                                                                                                                                                // Voice Line: "Deep Learning issue detected. Failed to run the classifier!"
         break;
       }
@@ -632,23 +658,23 @@ void TemperatureFormatted(float temperature) {
 void DistanceFormatted(uint32_t distance_value) {
   if (distance_value < 0) {                                                                                                                                                           // if the distance is negative then proceed
       PlayVoice(43);                                                                                                                                                                  // Voice Line: "negative"
-      PlayVoice(-(distance_value) + 1138);                                                                                                                                            // Voice Line: Absolute value of the distance as a number between 0 and 999
+      PlayVoice(-(distance_value) + 1141);                                                                                                                                            // Voice Line: Absolute value of the distance as a number between 0 and 999
       MetersFormatted(-(distance_value));                                                                                                                                             // Formatting Meters or Meter output depending on the value
   } else if (distance_value >= 0 && distance_value < 1000) {
-      PlayVoice(distance_value + 1138);                                                                                                                                               // Voice Line: number between 0 and 999
+      PlayVoice(distance_value + 1141);                                                                                                                                               // Voice Line: number between 0 and 999
       MetersFormatted(distance_value);                                                                                                                                                // Formatting Meters or Meter output depending on the value
   } else {
       uint8_t  distance_value_kilometers = distance_value / 1000;                                                                                                                     // find from the given value the number of kilometers
       uint16_t distance_value_meters     = distance_value % 1000;                                                                                                                     // find from the given value the number of meters
   
-      PlayVoice(distance_value_kilometers + 1138);                                                                                                                                    // Voice Line: number between 0 and 999 
+      PlayVoice(distance_value_kilometers + 1141);                                                                                                                                    // Voice Line: number between 0 and 999 
       if (distance_value_kilometers == 1) PlayVoice(45);                                                                                                                              // if the distance_travelled is 1 kilometer + x meters, then say "kilometer" voice line, not "kilometers"
       else PlayVoice(46);                                                                                                                                                             // the distance_travelled is higher than 1 kilometer, so say "kilometers"
 
       if (distance_value_meters != 0) {
         delay(100);                                                                                                                                                                   // helps with voice smoothness
         PlayVoice(23);                                                                                                                                                                // Voice Line: "and"
-        PlayVoice(int(distance_value_meters) + 1138);                                                                                                                                 // Voice Line: number between 0 and 999
+        PlayVoice(int(distance_value_meters) + 1141);                                                                                                                                 // Voice Line: number between 0 and 999
         MetersFormatted(distance_value_meters);                                                                                                                                       // Formatting Meters or Meter output depending on the value
       }
   }
@@ -663,18 +689,18 @@ void MetersFormatted(uint16_t meters) {
 //------------------------------------------------------------------------------------------------------------------------------TOTAL/CURRENT STEPS & KILOCALORIES/KILOJOULS OUTPUT FORMATTED-------------------------------------------------------------------------------------------------------------------------------
 void OutputFormatted(unsigned long output) { 
   if (output < 1000) {                                                                                                                                                                // if the output is lower than 1 thousand, then use the voice lines available for the number speech
-      PlayVoice(int(output) + 1138);                                                                                                                                                  // Voice Line: number between 0 and 999
+      PlayVoice(int(output) + 1141);                                                                                                                                                  // Voice Line: number between 0 and 999
   } else if (output >= 1000) {                                                                                                                                                        // if the output is higher or equal to 1000, then convert the output to thousand + remainder
       uint8_t  output_thousands = output / 1000;                                                                                                                                      // divide the value by 1000 to get the number of thousands
       uint16_t output_remainder = output % 1000;                                                                                                                                      // use Arduino Modulo function to get the remaining amount
   
-      PlayVoice(output_thousands + 1138);                                                                                                                                             // Voice Line: number between 0 and 999
+      PlayVoice(output_thousands + 1141);                                                                                                                                             // Voice Line: number between 0 and 999
       PlayVoice(1116);                                                                                                                                                                // Voice Line: "thousand"
       
       if (output_remainder != 0) {
         delay(100);                                                                                                                                                                   // helps with voice smoothness
         PlayVoice(23);                                                                                                                                                                // Voice Line: "and"
-        PlayVoice(int(output_remainder) + 1138);                                                                                                                                      // Voice Line: number between 0 and 999
+        PlayVoice(int(output_remainder) + 1141);                                                                                                                                      // Voice Line: number between 0 and 999
       }                                              
   }
 }

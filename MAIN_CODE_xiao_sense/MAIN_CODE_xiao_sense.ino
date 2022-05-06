@@ -1,7 +1,10 @@
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------------------------------------------LIBRARIES----------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //system libraries
-#include <Wire.h>
-#include <PDM.h>
-#include <I2C_Anything.h>
+#include <Wire.h>                                                                                                                                                                     // I2C Protocol library (Nicla Sense ME custom)
+#include <PDM.h>                                                                                                                                                                      // microphone recording library
+#include <I2C_Anything.h>                                                                                                                                                             // library to send any data type through I2C (normally low/high bits) 
 
 //python trained machine learning models ported to plain C for arduino integration
 #include "src/ml-models/SVMClassifier.h"
@@ -11,176 +14,181 @@
 #include "src/ml-models/DecisionTreeRegressor.h"
 
 //trained deep learning model library for voice commands recognition
-#include "a1210_samples_cnn_voice_rec_inferencing.h"
+#include "dl_cnn_voice_inferencing.h"
+
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------DECLARATIONS--------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#define EIDSP_QUANTIZE_FILTERBANK   0                                                                                                                                                 // if the target is limited in memory remove this macro to save 10K RAM
+#define slaveAddress 0x08                                                                                                                                                             // I2C address
 
 //machine learning models declarations
-Eloquent::ML::Port::SVM SVM_classifier;
-Eloquent::ML::Port::XGBClassifier XGBoost_classifier;
-Eloquent::ML::Port::DecisionTree DecisionTree_classifier;
-Eloquent::ML::Port::GaussianNB GaussianNB_classifier;
-Eloquent::ML::Port::DecisionTreeRegressor decisiontree_regressor;
+Eloquent::ML::Port::SVM SVM_classifier;                                                                                                                                               // define SVM Classification object
+Eloquent::ML::Port::XGBClassifier XGBoost_classifier;                                                                                                                                 // define XGBoost Classifier object
+Eloquent::ML::Port::DecisionTree DecisionTree_classifier;                                                                                                                             // define Decision Tree Classifier object
+Eloquent::ML::Port::GaussianNB GaussianNB_classifier;                                                                                                                                 // define Gaussian Naive Bayes Classifier object
+Eloquent::ML::Port::DecisionTreeRegressor decisiontree_regressor;                                                                                                                     // define Decision Tree Regressor object
 
-//if the target is limited in memory remove this macro to save 10K RAM
-#define EIDSP_QUANTIZE_FILTERBANK   0
-
-//I2C address
-#define slaveAddress 0x08
-
-//deep learning voice audio buffers/pointers/selectors
-typedef struct {
-  int16_t *buffer;
-  uint8_t buf_ready;
+//-----------------------------------------------------------------------------------------------------------------------------------DEEP LEARNING VOICE AUDIO BUFFERS & MEMORY POINTERS----------------------------------------------------------------------------------------------------------------------------------------------
+typedef struct {                                                                                                                                                                      // buffer structure
+  int16_t  *buffer;
+  uint8_t  buf_ready;
   uint32_t buf_count;
   uint32_t n_samples;
 } inference_t;
-static inference_t inference;
-static signed short sampleBuffer[2048];
-static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 
-//variables
-float Y[6];
-float X[5];
-float X_SVM[6];
-bool startInferencing = false;
+static inference_t inference;                                                                                                                                                         // inference variable 
+static signed short sampleBuffer[2048];                                                                                                                                               // audio sample buffer
+static bool debug_nn = false;                                                                                                                                                         // set this to true to see e.g. features generated from the raw signal
 
-void setup()                //Arduino setup function
-{
-  Wire.begin(slaveAddress);     // join i2c bus with address #8
-  Wire.onRequest(requestEvent); // register event
-  Wire.onReceive(receiveEvent); // register event
+//-------------------------------------------------------------------------------------------------------------------------------------------------------VARIABLES----------------------------------------------------------------------------------------------------------------------------------------------------------
+float Y[6];                                                                                                                                                                           // labels output array 
+float X[5];                                                                                                                                                                           // 5 features array for XGBoost, Decision Tree, Gaussian Naive Bayes & Decision Tree Regressor
+float X_SVM[6];                                                                                                                                                                       // 6 features array specifically for Support Vector Machines weather classification model
+bool startInferencing = false;                                                                                                                                                        // recording & CNN classification start flag
+
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------SYSTEM SETUP--------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void setup() {                                                                                                                                                                        // Arduino setup function
+  Wire.begin(slaveAddress);                                                                                                                                                           // join i2c bus with address #8
+  Wire.onRequest(requestEvent);                                                                                                                                                       // register event
+  Wire.onReceive(receiveEvent);                                                                                                                                                       // register event
 }
 
-void loop()
-{
-  if (startInferencing == true) {
-    Y[5] = 10;
 
-    if (microphone_inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT) == false) {
-      Y[5] = 11;
-      startInferencing = false;
-      return;
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------MAIN ROUTINE--------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void loop() {
+  if (startInferencing == true) {                                                                                                                                                     // if the recording flag is true, then start the recording and classification
+    Y[5] = 12;                                                                                                                                                                        // default label in case the classified recording has all labels lower than 50% (softmax function)
+
+    if (microphone_inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT) == false) {                                                                                                        // if the result is equal to false, then:
+      Y[5] = 13;                                                                                                                                                                      // there have been issues with starting the audio sampling
+      startInferencing = false;                                                                                                                                                       // set the flag to false
+      return;                                                                                                                                                                         // return back to the main loop outside the if
     }
-    delay(350);
+    delay(350);                                                                                                                                                                       // 350 milliseconds delay for the user to "react" (audio stimulus is 170ms + the microphone with the PDM library starts a bit early)  
 
-    bool m = microphone_inference_record();
-    if (!m) {
-      Y[5] = 12;
-      startInferencing = false;
-      return;
+    bool m = microphone_inference_record();                                                                                                                                           // set the variable to the either false or true if the recording can start
+    if (!m) {                                                                                                                                                                         // if the variable is true then proceed
+      Y[5] = 14;                                                                                                                                                                      // set the voice label as 12 which mean "Software or Hardware issue detected. Failed to record audio!"
+      startInferencing = false;                                                                                                                                                       // set the flag to false                                                             
+      return;                                                                                                                                                                         // return back to the main loop outside the if
     }
 
-    signal_t signal;
-    signal.total_length = EI_CLASSIFIER_RAW_SAMPLE_COUNT;
-    signal.get_data = &microphone_audio_signal_get_data;
+    signal_t signal;                                                                                                                                                                  // setup classifier 
+    signal.total_length = EI_CLASSIFIER_RAW_SAMPLE_COUNT;                                                                                                                             // set audio length
+    signal.get_data = &microphone_audio_signal_get_data;                                                                                                                              // result array
     ei_impulse_result_t result = { 0 };
 
-    EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);
-    if (r != EI_IMPULSE_OK) {
-      Y[5] = 13;
-      startInferencing = false;
-      return;
+    EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);                                                                                                                  // start classification on the signal
+    if (r != EI_IMPULSE_OK) {                                                                                                                                                         // if there has been an anomaly with the classifier
+      Y[5] = 15;                                                                                                                                                                      // set the label as 13 meaning: "Deep Learning issue detected. Failed to run the classifier!"
+      startInferencing = false;                                                                                                                                                       // set the flag to false                                                                                               
+      return;                                                                                                                                                                         // return back to the main loop outside the if
     }
 
-    for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {                 //loop through all the predictions
-      if (result.classification[ix].value > 0.5) Y[5] = ix;                     //if there is a prediction with higher than 50% certainty (softmax function - everything adds to 100%)                                                                               
-    }                                                                           //set the predicted label to the label number from Edge Impulse CNN classifier
+    for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {                                                                                                                       // loop through all the predictions
+      if (result.classification[ix].value > 0.5) Y[5] = ix;                                                                                                                           // if there is a prediction with higher than 50% certainty (softmax function - everything adds to 100%)                                                                               
+    }                                                                                                                                                                                 // set the predicted label to the label number from Edge Impulse CNN classifier
 
-    Y[0] = SVM_classifier.predict(X_SVM);
-    Y[1] = XGBoost_classifier.predict(X);
-    Y[2] = DecisionTree_classifier.predict(X);
-    Y[3] = GaussianNB_classifier.predict(X);
-    Y[4] = decisiontree_regressor.predict(X);
+    Y[0] = SVM_classifier.predict(X_SVM);                                                                                                                                             // use the 6 features array with the SVM to predict the rainfall, and assign it toelement 0 in the array
+    Y[1] = XGBoost_classifier.predict(X);                                                                                                                                             // use the 5 features array with the XGB to predict the rainfall, and assign it toelement 1 in the array
+    Y[2] = DecisionTree_classifier.predict(X);                                                                                                                                        // use the 5 features array with the DTC to predict the rainfall, and assign it toelement 2 in the array
+    Y[3] = GaussianNB_classifier.predict(X);                                                                                                                                          // use the 5 features array with the GNB to predict the rainfall, and assign it toelement 3 in the array
+    Y[4] = decisiontree_regressor.predict(X);                                                                                                                                         // use the 5 features array with the DTR to predict the rainfall, and assign it toelement 4 in the array
 
-    microphone_inference_end();
-    startInferencing = false;
+    microphone_inference_end();                                                                                                                                                       // end the voice inference
+    startInferencing = false;                                                                                                                                                         // set the flag to false as the process has ended
   }
-  delay(50);
+  delay(1000);                                                                                                                                                                        // delay for system stability
 }
 
+
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------------------SUBROUTINES---------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+//--------------------------------------------------------------------------------------------------------------------------------------------I2C RECEIVE DATA EVENT INTERRUPT----------------------------------------------------------------------------------------------------------------------------------------------
 void receiveEvent(int howMany) {
-  for (int i = 0; i < 6; i++) {
-    I2C_readAnything(X_SVM[i]);
-    if (i < 5) X[i] = X_SVM[i];;
-  }
-  startInferencing = true;
+  for (int i = 0; i < 6; i++) {                                                                                                                                                       // loop through all the received data (6 elements)
+    I2C_readAnything(X_SVM[i]);                                                                                                                                                       // place it in the array with 6 elements for the SVM ML Classifier (uses 6 features for classification)
+    if (i < 5) X[i] = X_SVM[i];                                                                                                                                                       // if i is less than 5, take the first 5 elements and place them in the regular array for ML Classification 
+  }                                                                                                                                                                                   // 4 out of 5 models use 4 features
+  
+  startInferencing = true;                                                                                                                                                            // change flag for voice inference to true, so that the main loop proceeds only after data has been received
 }
 
-void requestEvent()
-{
-  for (int j = 0; j < sizeof(Y); j++) {
-    I2C_writeAnything(Y[j]);
-  }
+//--------------------------------------------------------------------------------------------------------------------------------------------I2C REQUEST DATA EVENT INTERRUPT----------------------------------------------------------------------------------------------------------------------------------------------
+void requestEvent(void) {
+  for (int j = 0; j < sizeof(Y); j++) I2C_writeAnything(Y[j]);                                                                                                                        // loop through the labels array, then send labels one by one
 }
 
-static void pdm_data_ready_inference_callback(void)                        //PDM buffer full callback
-{
-  int bytesAvailable = PDM.available();                                    //Get data and call audio thread callback
-  int bytesRead = PDM.read((char *)&sampleBuffer[0], bytesAvailable);      // read into the sample buffer
+//----------------------------------------------------------------------------------------------------------------------------------------------------SPEECH FUNCTION-------------------------------------------------------------------------------------------------------------------------------------------------------
+static void pdm_data_ready_inference_callback(void) {                                                                                                                                 // PDM buffer full callback
+  int bytesAvailable = PDM.available();                                                                                                                                               // get data and call audio thread callback
+  int bytesRead = PDM.read((char *)&sampleBuffer[0], bytesAvailable);                                                                                                                 // read into the sample buffer
 
-  if (inference.buf_ready == 0)
-  {
-    for (int i = 0; i < bytesRead >> 1; i++)
-    {
-      inference.buffer[inference.buf_count++] = sampleBuffer[i];
+  if (inference.buf_ready == 0) {                                                                                                                                                       
+    for (int i = 0; i < bytesRead >> 1; i++) {                                                                                                                                        // perform loop for bytesRead-1 iterations, shift value by 1 bit
+      inference.buffer[inference.buf_count++] = sampleBuffer[i];                                                                                                                      // place the sample in the inference buffer
 
-      if (inference.buf_count >= inference.n_samples)
-      {
-        inference.buf_count = 0;
-        inference.buf_ready = 1;
-        break;
+      if (inference.buf_count >= inference.n_samples) {                                                                                                                               // if the count is higher than the amount of samples available then:
+        inference.buf_count = 0;                                                                                                                                                      // set the count inference buffer to 0  
+        inference.buf_ready = 1;                                                                                                                                                      // the buffer is not ready
+        break;                                                                                                                                                                        // exit the for loop early
       }
     }
   }
 }
 
-static bool microphone_inference_start(uint32_t n_samples)                //Init inferencing struct and setup/start PDM
-{
-  inference.buffer = (int16_t *)malloc(n_samples * sizeof(int16_t));
+//--------------------------------------------------------------------------------------------------------------------------------------------------START VOICE RECORDING---------------------------------------------------------------------------------------------------------------------------------------------------
+static bool microphone_inference_start(uint32_t n_samples) {                                                                                                                          // init inferencing struct and setup/start PDM
+  inference.buffer = (int16_t *)malloc(n_samples * sizeof(int16_t));                                                                                                                  // allocates a block of size bytes of memory, returning a pointer to the beginning of the block
+  if (inference.buffer == NULL) return false;                                                                                                                                         // return false if the buffer is zero
 
-  if (inference.buffer == NULL) {
-    return false;
+  inference.buf_count  = 0;                                                                                                                                                           // set the count inference buffer to 0  
+  inference.n_samples  = n_samples;                                                                                                                                                   // set the samples for the buffer equal to the n_samples (in this case 1)
+  inference.buf_ready  = 0;                                                                                                                                                           // set the ready inference buffer to 0
+
+  PDM.onReceive(&pdm_data_ready_inference_callback);                                                                                                                                  // configure the data receive callback
+  PDM.setBufferSize(4096);                                                                                                                                                            // set buffer size
+  if (!PDM.begin(1, EI_CLASSIFIER_FREQUENCY)) {                                                                                                                                       // initialize PDM with: one channel (mono mode), a 16 kHz sample rate
+    Y[5] = 14;                                                                                                                                                                        // set the voice label to send back to the Nicla Sense ME as 12 (meaning "issues with the audio sampling")
+    microphone_inference_end();                                                                                                                                                       // end recording
+
+    return false;                                                                                                                                                                     // return false because the microphone recording was unable to start
   }
 
-  inference.buf_count  = 0;
-  inference.n_samples  = n_samples;
-  inference.buf_ready  = 0;
-
-  PDM.onReceive(&pdm_data_ready_inference_callback);          // configure the data receive callback
-  PDM.setBufferSize(4096);
-  if (!PDM.begin(1, EI_CLASSIFIER_FREQUENCY)) {                //initialize PDM with: one channel (mono mode), a 16 kHz sample rate
-    Y[5] = 12;
-    microphone_inference_end();
-
-    return false;
-  }
-
-
-  PDM.setGain(127);                                        // set the gain, defaults to 20
-
-  return true;
+  PDM.setGain(127);                                                                                                                                                                   // set the gain, defaults to 20
+  return true;                                                                                                                                                                        // return true if the microphone recording was able to start
 }
 
-static bool microphone_inference_record(void)
-{
-  inference.buf_ready = 0;
-  inference.buf_count = 0;
+//-----------------------------------------------------------------------------------------------------------------------------------------------------RECORDING BUFFER-----------------------------------------------------------------------------------------------------------------------------------------------------
+static bool microphone_inference_record(void) {
+  inference.buf_ready = 0;                                                                                                                                                            // set the ready inference buffer to 0
+  inference.buf_count = 0;                                                                                                                                                            // set the count inference buffer to 0  
 
-  while (inference.buf_ready == 0) {              //Wait on new data
-    delay(10);
-  }
-
-  return true;                                    //True when finished
+  while (inference.buf_ready == 0) delay(10);                                                                                                                                         // wait on new data
+  return true;                                                                                                                                                                        // true when finished
 }
 
-static int microphone_audio_signal_get_data(size_t offset, size_t length, float *out_ptr)
-{
-  numpy::int16_to_float(&inference.buffer[offset], out_ptr, length);                      //get raw audio signal data
-
-  return 0;
+//--------------------------------------------------------------------------------------------------------------------------------------------------------AUDIO DATA--------------------------------------------------------------------------------------------------------------------------------------------------------
+static int microphone_audio_signal_get_data(size_t offset, size_t length, float *out_ptr) {
+  numpy::int16_to_float(&inference.buffer[offset], out_ptr, length);                                                                                                                  // get raw audio signal data
+  return 0;                                                                                                                                                                           // return value
 }
 
-static void microphone_inference_end(void)                      //stop PDM and release buffers
-{
-  PDM.end();
-  free(inference.buffer);
+//----------------------------------------------------------------------------------------------------------------------------------------------------END VOICE RECORDING---------------------------------------------------------------------------------------------------------------------------------------------------
+static void microphone_inference_end(void) {
+  PDM.end();                                                                                                                                                                          // stop PDM and release buffers
+  free(inference.buffer);                                                                                                                                                             // release voice buffer                                                                                                                                                                                                                 
 }
