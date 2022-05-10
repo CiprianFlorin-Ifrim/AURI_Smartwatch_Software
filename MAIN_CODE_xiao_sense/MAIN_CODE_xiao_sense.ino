@@ -14,7 +14,7 @@
 #include "src/ml-models/DecisionTreeRegressor.h"
 
 //trained deep learning model library for voice commands recognition
-#include "dl_cnn_voice_inferencing.h"
+#include <dl_cnn_voice_inferencing.h>
 
 
 
@@ -67,18 +67,18 @@ void setup() {                                                                  
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void loop() {
   if (startInferencing == true) {                                                                                                                                                     // if the recording flag is true, then start the recording and classification
-    Y[5] = 12;                                                                                                                                                                        // default label in case the classified recording has all labels lower than 50% (softmax function)
+    Y[5] = 14;                                                                                                                                                                        // default label in case the classified recording has all labels lower than 50% (softmax function)
 
     if (microphone_inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT) == false) {                                                                                                        // if the result is equal to false, then:
-      Y[5] = 13;                                                                                                                                                                      // there have been issues with starting the audio sampling
+      Y[5] = 15;                                                                                                                                                                      // there have been issues with starting the audio sampling
       startInferencing = false;                                                                                                                                                       // set the flag to false
       return;                                                                                                                                                                         // return back to the main loop outside the if
     }
     delay(350);                                                                                                                                                                       // 350 milliseconds delay for the user to "react" (audio stimulus is 170ms + the microphone with the PDM library starts a bit early)  
-
+                                                                                                                                                                                      
     bool m = microphone_inference_record();                                                                                                                                           // set the variable to the either false or true if the recording can start
     if (!m) {                                                                                                                                                                         // if the variable is true then proceed
-      Y[5] = 14;                                                                                                                                                                      // set the voice label as 12 which mean "Software or Hardware issue detected. Failed to record audio!"
+      Y[5] = 16;                                                                                                                                                                      // set the voice label as 12 which mean "Software or Hardware issue detected. Failed to record audio!"
       startInferencing = false;                                                                                                                                                       // set the flag to false                                                             
       return;                                                                                                                                                                         // return back to the main loop outside the if
     }
@@ -90,7 +90,7 @@ void loop() {
 
     EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug_nn);                                                                                                                  // start classification on the signal
     if (r != EI_IMPULSE_OK) {                                                                                                                                                         // if there has been an anomaly with the classifier
-      Y[5] = 15;                                                                                                                                                                      // set the label as 13 meaning: "Deep Learning issue detected. Failed to run the classifier!"
+      Y[5] = 17;                                                                                                                                                                      // set the label as 13 meaning: "Deep Learning issue detected. Failed to run the classifier!"
       startInferencing = false;                                                                                                                                                       // set the flag to false                                                                                               
       return;                                                                                                                                                                         // return back to the main loop outside the if
     }
@@ -99,16 +99,16 @@ void loop() {
       if (result.classification[ix].value > 0.5) Y[5] = ix;                                                                                                                           // if there is a prediction with higher than 50% certainty (softmax function - everything adds to 100%)                                                                               
     }                                                                                                                                                                                 // set the predicted label to the label number from Edge Impulse CNN classifier
 
-    Y[0] = SVM_classifier.predict(X_SVM);                                                                                                                                             // use the 6 features array with the SVM to predict the rainfall, and assign it toelement 0 in the array
-    Y[1] = XGBoost_classifier.predict(X);                                                                                                                                             // use the 5 features array with the XGB to predict the rainfall, and assign it toelement 1 in the array
-    Y[2] = DecisionTree_classifier.predict(X);                                                                                                                                        // use the 5 features array with the DTC to predict the rainfall, and assign it toelement 2 in the array
-    Y[3] = GaussianNB_classifier.predict(X);                                                                                                                                          // use the 5 features array with the GNB to predict the rainfall, and assign it toelement 3 in the array
-    Y[4] = decisiontree_regressor.predict(X);                                                                                                                                         // use the 5 features array with the DTR to predict the rainfall, and assign it toelement 4 in the array
+    Y[0] = SVM_classifier.predict(X_SVM);                                                                                                                                             // use the 6 features array with the SVM to predict the rainfall, and assign it to element 0 in the array
+    Y[1] = XGBoost_classifier.predict(X);                                                                                                                                             // use the 5 features array with the XGB to predict the rainfall, and assign it to element 1 in the array
+    Y[2] = DecisionTree_classifier.predict(X);                                                                                                                                        // use the 5 features array with the DTC to predict the rainfall, and assign it to element 2 in the array
+    Y[3] = GaussianNB_classifier.predict(X);                                                                                                                                          // use the 5 features array with the GNB to predict the rainfall, and assign it to element 3 in the array
+    Y[4] = decisiontree_regressor.predict(X);                                                                                                                                         // use the 5 features array with the DTR to predict the rainfall, and assign it to element 4 in the array
 
     microphone_inference_end();                                                                                                                                                       // end the voice inference
     startInferencing = false;                                                                                                                                                         // set the flag to false as the process has ended
   }
-  delay(1000);                                                                                                                                                                        // delay for system stability
+  delay(10);                                                                                                                                                                          // delay for system stability
 }
 
 
@@ -162,7 +162,7 @@ static bool microphone_inference_start(uint32_t n_samples) {                    
   PDM.onReceive(&pdm_data_ready_inference_callback);                                                                                                                                  // configure the data receive callback
   PDM.setBufferSize(4096);                                                                                                                                                            // set buffer size
   if (!PDM.begin(1, EI_CLASSIFIER_FREQUENCY)) {                                                                                                                                       // initialize PDM with: one channel (mono mode), a 16 kHz sample rate
-    Y[5] = 14;                                                                                                                                                                        // set the voice label to send back to the Nicla Sense ME as 12 (meaning "issues with the audio sampling")
+    Y[5] = 16;                                                                                                                                                                        // set the voice label to send back to the Nicla Sense ME as 12 (meaning "issues with the audio sampling")
     microphone_inference_end();                                                                                                                                                       // end recording
 
     return false;                                                                                                                                                                     // return false because the microphone recording was unable to start
