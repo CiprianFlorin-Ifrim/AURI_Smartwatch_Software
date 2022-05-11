@@ -10,18 +10,19 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------------------------------------------------------------LIBRARIES----------------------------------------------------------------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#include "mbed.h" 
+#include "Arduino.h" 
 #include "Nicla_System.h"                                                                                                                                                             // Main Nicla Sense ME Library >> enables I2C, UART, pinMode etc.
-#include "Arduino_BHY2.h"                                                                                                                                                             // Arduino Bosch library >> enables sensor readout and update functionalities
-#include <Wire.h>                                                                                                                                                                     // I2C Protocol library (Nicla Sense ME custom)
-#include <Adafruit_MLX90614.h>                                                                                                                                                        // Adafruit MLDX90614 Temperature Sensor Library
-#include <Adafruit_SI1145.h>                                                                                                                                                          // Adafruit SI1145 UV Index Sensor Library
-#include <Ewma.h>                                                                                                                                                                     // Exponentially Weighted Moving Average Library for ADC filtering
-#include <Battery.h>                                                                                                                                                                  // Battery Sense library for voltage and percentage measurements
-#include <bq25120a_nicla.h>                                                                                                                                                           // Nicla Sense ME Custom Library for BQ25120A Battery Charging IC
-#include <I2C_Anything.h>                                                                                                                                                             // library to send any data type through I2C (normally low/high bits) 
+#include "Arduino_BHY2.h"                                                                                                                                                              // Arduino Bosch library >> enables sensor readout and update functionalities
+#include "Wire.h"                                                                                                                                                                      // I2C Protocol library (Nicla Sense ME custom)
+#include "Adafruit_MLX90614.h"                                                                                                                                                         // Adafruit MLDX90614 Temperature Sensor Library
+#include "Adafruit_SI1145.h"                                                                                                                                                           // Adafruit SI1145 UV Index Sensor Library
+#include "Ewma.h"                                                                                                                                                                      // Exponentially Weighted Moving Average Library for ADC filtering
+#include "Battery.h"                                                                                                                                                                   // Battery Sense library for voltage and percentage measurements
+#include "bq25120a_nicla.h"                                                                                                                                                            // Nicla Sense ME Custom Library for BQ25120A Battery Charging IC
+#include "I2C_Anything.h"                                                                                                                                                              // library to send any data type through I2C (normally low/high bits) 
 #include "DFRobotDFPlayerMini.h"                                                                                                                                                      // modified DFPlayer library for faster and simpler operation in file playing
 #include <TimeLib.h>                                                                                                                                                                  // time library to keep track of timedate and sync functionality
-#include <DFRobot_Heartrate.h>                                                                                                                                                        // DFRobot Gravity Heartrate sensor library for BMP output
 
 
 
@@ -32,18 +33,22 @@
 #define battery_sense A1                                                                                                                                                              // battery sense pin for reading the battery voltage (through a voltage divider)
 #define busy_pin P0_10                                                                                                                                                                // busy pin definition to check whether the DFPlayer has finished playing
 #define slave_address 0x08                                                                                                                                                            // defined slave address for I2C communication with the XIAO Sense Device
-#define TIME_HEADER  'T'                                                                                                                                                              // header tag for serial time sync message
-#define TIME_REQUEST  7                                                                                                                                                               // ASCII bell character requests a time sync message 
+#define TIME_HEADER   'T'                                                                                                                                                              // header tag for serial time sync message
+#define TIME_REQUEST   7                                                                                                                                                               // ASCII bell character requests a time sync message 
 
-Sensor            humidity(SENSOR_ID_HUM);                                                                                                                                            // create HUMIDITY sensor object
-Sensor            temperature(SENSOR_ID_TEMP);                                                                                                                                        // create TEMPERATURE sensor object
-Sensor            pressure(SENSOR_ID_BARO);                                                                                                                                           // create PRESSURE sensor object
-SensorBSEC        bsec(SENSOR_ID_BSEC);                                                                                                                                               // create BSEC sensor object
-SensorOrientation orientation(SENSOR_ID_ORI);                                                                                                                                         // create ORIENTATION sensor object
-Sensor            tilt(SENSOR_ID_WRIST_TILT_GESTURE);                                                                                                                                 // create WRIST TILT GESTURE sensor object
-Sensor            steps(SENSOR_ID_STC);                                                                                                                                               // create STEPS sensor object
+using namespace mbed;
+using namespace rtos;
 
-DFRobot_Heartrate   heartrate(ANALOG_MODE);                                                                                                                                           // create HEARTRATE object as ANALOG_MODE or DIGITAL_MODE
+Sensor              humidity(SENSOR_ID_HUM);                                                                                                                                          // create HUMIDITY sensor object
+Sensor              temperature(SENSOR_ID_TEMP);                                                                                                                                      // create TEMPERATURE sensor object
+Sensor              pressure(SENSOR_ID_BARO);                                                                                                                                         // create PRESSURE sensor object
+Sensor              tilt(SENSOR_ID_WRIST_TILT_GESTURE);                                                                                                                               // create WRIST TILT GESTURE sensor object
+Sensor              motion_detection(SENSOR_ID_MOTION_DET);
+Sensor              steps(SENSOR_ID_STC);                                                                                                                                             // create STEPS sensor object
+SensorBSEC          bsec(SENSOR_ID_BSEC);                                                                                                                                             // create BSEC sensor object
+SensorOrientation   orientation(SENSOR_ID_ORI);                                                                                                                                       // create ORIENTATION sensor object
+SensorXYZ           gravityvector(SENSOR_ID_GRA);
+SensorQuaternion    geomagneticrotationvector(SENSOR_ID_GEORV);
 DFRobotDFPlayerMini DFPlayer;                                                                                                                                                         // create DFPLAYER object
 
 Adafruit_SI1145 uv    = Adafruit_SI1145();                                                                                                                                            // create SI1145 sensor object >> UV index sensor
@@ -54,10 +59,14 @@ Ewma temperature_BMP390_ewma(0.02);                                             
 Ewma temperature_BME688_ewma(0.02);                                                                                                                                                   // less smoothing (alpha value) - faster to detect changes, but more prone to noise
 Ewma pressure_BMP390_ewma(0.01);                                                                                                                                                      // most smoothing (alpha value) - less prone to noise, but very slow to detect changes
 Ewma humidity_BME688_ewma(0.05);                                                                                                                                                      // more smoothing (alpha value) - less prone to noise, but slow to detect changes
+Ewma heart_rate(0.02);                                                                                                                                                                // modest smoothing (alpha value) - faster to detect changes, but more prone to noise
                    
 float   temperature_BMP390_filtered, temperature_BME688_filtered, pressure_BMP390_filtered, humidity_BME688_filtered;                                                                 // define global float variables for the filtered sensor outputs
-bool    charging_flag = false;                                                                                                                                                        // charging flag used to output the voice command of charging only once
 uint8_t volume_level  = 25;
+bool    charging_flag = false;                                                                                                                                                        // charging flag used to output the voice command of charging only once
+bool    sync_watch    = false; 
+
+bool    condition_flags[9]  = {false, false, false, false, false, false, false, false, false};                                                                                      // array holding flags to not repeat the voice line continously, as soon as the condition is cleared, reset the flag
 
 
 
@@ -75,9 +84,12 @@ void setup() {
   bsec.begin();                                                                                                                                                                       // initialise BSEC object (BME688 sensor) from Nicla Sense ME  
   orientation.begin();                                                                                                                                                                // initialise ORIENTATION object (compass) from Nicla Sense ME 
   steps.begin();                                                                                                                                                                      // initialise STEPS object (pedometer) from Nicla Sense ME 
+  gravityvector.begin();
+  geomagneticrotationvector.begin();
+  motion_detection.begin();
 
   Serial1.begin(9600);                                                                                                                                                                // start Hardware UART at 9600 bits per second baud rate
-  DFPlayer.begin(Serial1, false, true);                                                                                                                                              // start the DFPlayer object with Serial1 and disable debug (1st false), 2nd false to disable the amp reset which creates a pop sound
+  DFPlayer.begin(Serial1, false, false);                                                                                                                                              // start the DFPlayer object with Serial1 (disable debug (1st false), 2nd false to disable the amp reset which creates a pop sound)
 
   battery.onDemand(8, HIGH);                                                                     
   battery.begin(3300, 2.14, &asigmoidal);                                                                                                                                             // start battery system set with a LiPo battery (asigmoidal draining) on a 3.3v MCU with 2.14 voltage ratio 
@@ -85,14 +97,14 @@ void setup() {
   mlx.begin();                                                                                                                                                                        // begin I2C communication with the Laser Temperature >> Adafruit Sensor MLX90614
   uv.begin();                                                                                                                                                                         // begin I2C communication with the UV Sensor >> Adafruit SI1145
 
-  setSyncProvider(RequestSync);                                                                                                                                                       // set function to call when time sync is required
-
   digitalWrite(busy_pin, HIGH);                                                                                                                                                       // set DFPlayer Busy Pin as HIGH >> when the device is playing it outputs LOW (set as HIGH and OUTPUT by nicla::begin())
   pinMode(busy_pin, INPUT);                                                                                                                                                           // set busy pin (GPIO3/P0_10) as INPUT
-
-  delay(5000);                                                                                                                                                                        // delay for the sensors to engage
+  pinMode(heartrate_pin, INPUT);
+    
+  ThisThread::sleep_for(5000);                                                                                                                                                        // delay for the sensors to engage
   DFPlayer.volume(volume_level);                                                                                                                                                      // set default DFPlayer Mini volume as 25 >> maximum is 30
-  BHY2.update();                                                                                                                                                                      // refresh Bosch Sensors
+  
+  setSyncProvider(RequestSync);                                                                                                                                                       // set function to call when time sync is required
 }
 
 
@@ -102,7 +114,6 @@ void setup() {
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void loop() {
 //----------------------------------------------------------------------------------------------------------------------------------------ENVIRONMENT CONTAMINATION/QUALITY CHECKS------------------------------------------------------------------------------------------------------------------------------------------
-/*
   BHY2.update();                                                                                                                                                                      // refresh Bosch Sensors
   uint8_t  discomfort_index = DiscomfortComputation(((1.0095 * bsec.comp_t()) - 4.8051), round((1.4383 * bsec.comp_h()) - 2.5628));                                                   // compute discomfort index by using function
   uint16_t uv_index         = (uv.readUV()) / 100.0;                                                                                                                                  // SI1145 Sensor Output >> Estimated UV Index based on the rapport Infrared and Visible Light
@@ -110,27 +121,37 @@ void loop() {
   uint16_t checks[9]          = {pressure.value(), bq25120_getLevel(), pressure.value(), discomfort_index, uv_index, bsec.iaq(), bsec.co2_eq(), bsec.b_voc_eq(), bsec.b_voc_eq()};    // array holding all sensor values
   uint16_t conditions[9]      = {1007, 2, 1023, 32, 8, 225, 2100, 10, 15};                                                                                                            // array holding all conditions for each specific sensor for what would be considered extreme values/health adverse effects
   uint16_t voice_outputs[9]   = {368, 1135, 369, 375, 1130, 364, 357, 348, 349};                                                                                                      // array containing all voice lines for each sensor based on the specific extreme condition
-  bool     condition_flags[9] = {false, false, false, false, false, false, false, false, false};                                                                                      // array holding flags to not repeat the voice line continously, as soon as the condition is cleared, reset the flag
   
   for (uint8_t i = 0; i < 9; i++) {                                                                                                                                                   // for loop to consider all conditions in an elegant manner
-    if (i <= 1 && checks[i] < conditions[i] && condition_flags[i] == false){                                                                                                          // if the array element is 0 (pressure) and the value is lower, then proceed                                                                                                                                              
-        condition_flags[i] = true;                                                                                                                                                    // make status flag TRUE
-        PlayVoice(voice_outputs[i]);                                                                                                                                                  // and play specific condition voice line
-    } else if (i > 1 && checks[i] >= conditions[i] && condition_flags[i] == false){                                                                                                   // if sensor condition is met, while the flag is false, and the element is 1 or higher                                                                                                                                                    
-        condition_flags[i] = true;                                                                                                                                                    // make status flag TRUE
-        PlayVoice(voice_outputs[i]);                                                                                                                                                  // and play specific condition voice line
-    } else condition_flags[i] = false;                                                                                                                                                // make status flag FALSE                                                                                                                                                                                  
+    if (i <= 1 && condition_flags[i] == false) {                                                                                                          // if the array element is 0 (pressure) and the value is lower, then proceed                                                                                                                                              
+        if (checks[i] <= conditions[i] && checks[i] > 0) {
+          condition_flags[i] = true;                                                                                                                                                    // make status flag TRUE
+          PlayVoice(voice_outputs[i]);                                                                                                                                                  // and play specific condition voice line
+        } else condition_flags[i] = false;
+    } else if (i >=- 2 && condition_flags[i] == false) {                                                                                                   // if sensor condition is met, while the flag is false, and the element is 1 or higher                                                                                                                                                    
+        if (checks[i] > conditions[i]) {
+          condition_flags[i] = true;                                                                                                                                                    // make status flag TRUE
+          PlayVoice(voice_outputs[i]);                                                                                                                                                  // and play specific condition voice line
+        } else condition_flags[i] = false;                                                                                                                                                     // make status flag FALSE    
+    }                                                                                                                                                                                                                                                                                                                            
   }
-  
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------BATTERY CHARGING CHECK---------------------------------------------------------------------------------------------------------------------------------------------------
+  uint8_t battery_status = bq25120_getStatus();
+  if (battery_status == 195 && charging_flag == false) {
+    charging_flag = true;
+    PlayVoice(5648);
+  } else if (battery_status != 195 && charging_flag == true) charging_flag = false;
+ 
 //-------------------------------------------------------------------------------------------------------------------------------------------------TIMESYNC MESSAGE CHECK---------------------------------------------------------------------------------------------------------------------------------------------------
   if (Serial.available() > 1) {                                                                                                                                                       // wait for at least two characters
     char c = Serial.read();                                                                                                                                                           // read the charater from the serial
     if (c == TIME_HEADER) ProcessSyncMessage();                                                                                                                                       // if the received character matches the time header definition, then start the processing of the message
   }
-*/
+
 //------------------------------------------------------------------------------------------------------------------------------------MAIN CODE - SENSOR COMPUTATION - OUTPUT SELECTION-------------------------------------------------------------------------------------------------------------------------------------
   int activation = uv.readIR();
-  if (activation >= 300) {                                                                                                                                                            // if the gesture event was recognised, then start the computation and inform the user
+  if (activation >= 330) {                                                                                                                                                            // if the gesture event was recognised, then start the computation and inform the user
     // initialise system >> inform user
     nicla::leds.setColor(red);                                                                                                                                                        // set the led colour of the Nicla Sense ME to RED as a visual cue to the user that the system has been activated
     uint8_t random_listening = random(1, 11);                                                                                                                                         // returns a random number between min(1) and max-1(10) >> equivalent to the 10 listening voice lines available
@@ -195,6 +216,7 @@ void loop() {
     // computation ended
     while (!digitalRead(busy_pin));                                                                                                                                                   // block the code if the computation has been completed before listening voice line 
     nicla::leds.setColor(green);                                                                                                                                                      // change led to green to visually inform the user they can speak >> visual cue
+    ThisThread::sleep_for(10);                                                                                                                                                                       // adds stability to the system 
     
     // begin transfer from Nicla Sense ME to Seeed Xiao Sense through I2C
     Wire.beginTransmission(slave_address);                                                                                                                                            // transmit to device #8 (SlaveAddress is used)
@@ -202,16 +224,19 @@ void loop() {
     Wire.endTransmission();                                                                                                                                                           // stop transmitting
 
     // wait for the Xiao Sense to finish recording the audio and performing the classification
-    delay(2500);                                                                                                                                                                      // delay for time to send everything & time to unpack on the Xiao Sense & 350ms reaction delay & recording (1650ms)  >> circa 2050ms
+    ThisThread::sleep_for(2500);                                                                                                                                                      // delay for time to send everything & time to unpack on the Xiao Sense & 350ms reaction delay & recording (1650ms)  >> circa 2050ms
     nicla::leds.setColor(off);                                                                                                                                                        // turn the LED off
-    PlayVoice(int(round(random_listening/2)) + 1135);                                                                                                                                 // play random voice line betwee 
+    uint8_t random_computing = random(1, 6);                                                                                                                                          // returns a random number between min(1) and max-1(5) >> equivalent to the 5 computation voice lines available
+    PlayVoice(random_computing + 1141);                                                                                                                                               // play random voice line between the 5 available
+    ThisThread::sleep_for(100);                                                                                                                                                       // adds stability to the system 
     
     // receive data from the Seeed Xiao Sense to Nicla Sense ME through I2C
     float dataReceived[6];                                                                                                                                                            // define float array of 6 elements for the data received (labels) 
     dataReceived[5] = 14;
     Wire.requestFrom(slave_address, sizeof(dataReceived));                                                                                                                            // request the voice command label + ML models labels (4) + ML precipitation regression
     while (Wire.available()) for (uint8_t j = 0; j < sizeof(dataReceived); j++) I2C_readAnything(dataReceived[j]);                                                                    // slave may send less than requested >> for the duration 
-    delay(500);                                                                                                                                                                       // adds stability to the system w
+    ThisThread::sleep_for(300);                                                                                                                                                       // adds stability to the system 
+
 
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -230,12 +255,12 @@ void loop() {
         PlayVoice(int(battery_level_bq25120 + 37));                                                                                                                                   // 1 out of 5 voice lines representing the battery level as full, high, medium, low, empty based on the BQ25120 IC and custom library
         PlayVoice(int(battery_percentage_circuit + 144));                                                                                                                             // Voice Line: 1-100% battery charge percentage
         
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(1112);                                                                                                                                                              // Voice Line: "The battery voltage is:"
         OutputFormatted(battery_voltage_circuit);                                                                                                                                     // formatted in thousands & remainder
         PlayVoice(1119);                                                                                                                                                              // Voice Line: "millivolts"
 
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay between voice lines for smoother output
         if (battery_fault_bq25120 == 0) PlayVoice(54);                                                                                                                                // Voice Line: "The battery is healthy and with no faults!"
         else PlayVoice(55);                                                                                                                                                           // Voice Line: "Attention! Faults regarding the battery have been detected!"
         
@@ -252,11 +277,11 @@ void loop() {
         PlayVoice(34);                                                                                                                                                                // Voice Line: "The cloud base forms at a computed altitude of:"
         DistanceFormatted(cloud_base_altitude_groundlevel);                                                                                                                           // altitude output formatted as kilometers and meters
          
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(35);                                                                                                                                                                // Voice Line: "Converted to the sea level, the cloud base altitude is:"
         DistanceFormatted(cloud_base_altitude_sealevel);                                                                                                                              // altitude output formatted as kilometers and meters
 
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(36);                                                                                                                                                                // Voice Line: "Furthermore, the approximated cloud temperature is:"
         TemperatureFormatted(cloud_base_temperature);                                                                                                                                 // temperature formatted output                                        
 
@@ -278,21 +303,21 @@ void loop() {
         TemperatureFormatted(temperature_regressed_fusion);                                                                                                                           // air temperature formatted output    
 
         //feels like temperature
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(2);                                                                                                                                                                 // Voice Line: "Furthermore, the calculated feels like temperature equals to:"
         TemperatureFormatted(heat_index);                                                                                                                                             // heat index temperature formatted output  
 
         // air dew point temperature output
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(3);                                                                                                                                                                 // Voice Line: "Additionally, the dew point is:"
         TemperatureFormatted(air_dew_point);                                                                                                                                          // air dew point temperature formatted output  
       
         //environment conditions outputs in a single array to save code footprint through a for loop
-        uint16_t environment_output[15] = {0, 53, int(round(temperature_fusion_fahrenheit) + 1141), 0, 4, int(round(humidity_BME688_regressed + 144)), 
+        uint16_t environment_output[15] = {0, 53, int(round(temperature_fusion_fahrenheit) + 1147), 0, 4, int(round(humidity_BME688_regressed + 144)), 
                                            0, 5, int(round(relative_humidity + 144)), 0, 7, int(round(pressure_BMP390_regressed - 949 + 244)), 0, 11, int(round(equivalent_sea_pressure - 949 + 244))};                        
                                                                                                           
         for (uint8_t i = 0; i < 15; i++) {                                                                                                                                            // loop through all array elements
-          if (environment_output[i] == 0) delay(200);                                                                                                                                 // if the array element in position "i" is a 0, perform a 200ms delay
+          if (environment_output[i] == 0) ThisThread::sleep_for(200);                                                                                                                                 // if the array element in position "i" is a 0, perform a 200ms delay
           else PlayVoice(environment_output[i]);                                                                                                                                      // otherwise play the specific voice line
         }
 
@@ -305,40 +330,48 @@ void loop() {
         uint8_t discomfort_index = DiscomfortComputation(temperature_regressed_fusion, humidity_BME688_regressed);                                                                    // discomfort index formula
         float   laser_skin_temp  = mlx.readObjectTempC() - 3.5;                                                                                                                       // sensor calibrated for skin temeperature detection through a tempered glass screen compared to the regular reading  
 
+        // output heart rate
+        HeartMonitor();
+
+        // output skin temperature
+        ThisThread::sleep_for(500);                                                                                                                                                                   // delay between voice lines for smoother output
+        PlayVoice(28);                                                                                                                                                                // Voice Line: "Moreover, the skin temperature is:"
+        TemperatureFormatted(laser_skin_temp);                                                                                                                                        // skin temperature formatted output  
+        
         // output heat index health effect
-        delay(500);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(500);                                                                                                                                                                   // delay between voice lines for smoother output
         uint8_t heat_index_values[6] = {4, 26, 32, 39, 51, 150};                                                                                                                      // array containing heat index conditions for the correct health effect output
         uint8_t heat_index_output[5] = {1, 2, 3, 4, 5};                                                                                                                               // voice lines for the specific health effect caused by heat index
         for (uint8_t n = 0; n < 5; n++) {                                                                                                                                             // loop through the first 5 elements of the values array, always comparing i and i+1
           if (temperature_regressed_fusion >= 4) {                                                                                                                                    // only output the heat index condition if it is higher than 4 degrees Celsius
             if (heat_index_values[n] < heat_index && heat_index <= heat_index_values[n+1]) {                                                                                          // compare condition from element i with element i+1 for the correct output
               PlayVoice(29);                                                                                                                                                          // Voice Line: "In terms of the effects of the environment on your health. The heat index stands at:"
-              PlayVoice(int(round(heat_index)) + 1141);                                                                                                                               // Voice Line: heat index value (as number)
+              PlayVoice(int(round(heat_index)) + 1147);                                                                                                                               // Voice Line: heat index value (as number)
               PlayVoice(heat_index_output[n] + 375);                                                                                                                                  // output the specific heat index condition voice line
             }
           } else PlayVoice(1125);                                                                                                                                                     // Voice Line: "The Heat Index Condition cannot be calculated as the environment temperature is too low. Please consider the temperature as the absolute truth!"
         }
 
         // output discomfort index health effect
-        delay(500);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(500);                                                                                                                                                                   // delay between voice lines for smoother output
         uint8_t discomfort_values[7] = {0, 21, 24, 27, 29, 32, 250};                                                                                                                  // array containing discomfort index conditions for the correct health effect output                                                                                                            
         uint8_t discomfort_output[6] = {1, 2, 3, 4, 5, 6};                                                                                                                            // voice lines for the specific health effect caused by the discomfort 
         for (uint8_t l = 0; l < 6; l++) {                                                                                                                                             // loop through the first 6 elements of the values array, always comparing i and i+1
           if (discomfort_values[l] < discomfort_index && discomfort_index <= discomfort_values[l+1]) {                                                                                // compare condition from element i with element i+1 for the correct output
             PlayVoice(56);                                                                                                                                                            // Voice Line: "The discomfort index is currently at:" 
-            PlayVoice(int(abs(discomfort_index)) + 1141);                                                                                                                             // output as a voice line the discomfort index number
+            PlayVoice(int(abs(discomfort_index)) + 1147);                                                                                                                             // output as a voice line the discomfort index number
             PlayVoice(discomfort_output[l] + 369);                                                                                                                                    // output the specific discomfort index condition voice line
           }
         }
 
         // output pressure health effect
-        delay(500);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(500);                                                                                                                                                                   // delay between voice lines for smoother output
         if (pressure_BMP390_regressed > 1022.678) PlayVoice(369);                                                                                                                     // Voice Line: "Caution! High pressure which pushes against the body and limits how much the tissue can expand. Potential of joint paint!"
         else if (pressure_BMP390_regressed < 1007) PlayVoice(368);                                                                                                                    // Voice Line: "Caution! Low pressure allowing the body's tissues to expand, affecting the nerves, which can cause migraines!"
         else PlayVoice(367);                                                                                                                                                          // Voice Line: "Expected pressure range!"
 
         // output uv index health effect
-        delay(500);
+        ThisThread::sleep_for(500);
         uint8_t uv_index_values[6] = {0, 3, 6, 8, 11, 20};                                                                                                                            // array containing uv index conditions for the correct health effect output 
         uint8_t uv_index_output[5] = {1, 2, 3, 4, 5};                                                                                                                                 // voice lines for the specific health effect caused by the uv index       
         for (uint8_t m = 0; m < 5; m++) {                                                                                                                                             // loop through the first 5 elements of the values array, always comparing i and i+1
@@ -346,11 +379,6 @@ void loop() {
             PlayVoice(uv_index_output[m] + 1126);                                                                                                                                     // output the specific uv index condition voice line
           }
         }
-
-        // output skin temperature
-        delay(500);                                                                                                                                                                   // delay between voice lines for smoother output
-        PlayVoice(28);                                                                                                                                                                // Voice Line: "Moreover, the skin temperature is:"
-        TemperatureFormatted(laser_skin_temp);                                                                                                                                        // skin temperature formatted output  
 
         break;
       }
@@ -366,23 +394,23 @@ void loop() {
         
         // output BSEC sensor accuracy before proceeding with the BSEC readouts and health effects
         PlayVoice(63);                                                                                                                                                                // Voice Line: "Checking the system status. The BSEC sensor accuracy is at the level:" 
-        PlayVoice(bsec_accuracy + 1141);                                                                                                                                              // output the BSEC accuracy level
+        PlayVoice(bsec_accuracy + 1147);                                                                                                                                              // output the BSEC accuracy level
 
         // output iaq health effect
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         uint16_t iaq_values[8] = {0, 50, 100, 150, 200, 250, 350, 500};                                                                                                               // array containing air quality index conditions for the correct health effect output 
         uint8_t  iaq_output[7] = {1, 2, 3, 4, 5, 6, 7};                                                                                                                               // voice lines for the specific health effect caused by the discomfort
         for (uint8_t j = 0; j < 7; j++) {                                                                                                                                             // loop through the first 7 elements of the values array, always comparing i and i+1
           if (iaq_values[j] < air_quality && air_quality <= iaq_values[j+1]) {                                                                                                        // compare condition from element i with element i+1 for the correct output                                                                                             
             PlayVoice(30);                                                                                                                                                            // Voice Line: "The air quality of your environment resides at:"
-            PlayVoice(air_quality + 1141);                                                                                                                                            // output air quality index as a number between 0 and 500
+            PlayVoice(air_quality + 1147);                                                                                                                                            // output air quality index as a number between 0 and 500
             PlayVoice(37);                                                                                                                                                            // Voice Line: "Which means the air is:"
             PlayVoice(iaq_output[j] + 359);                                                                                                                                           // output the specific air quality index condition voice line
           }
         }
 
         // output carbon dioxide health effect
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         uint16_t co2_values[10] = {0, 400, 600, 900, 1100, 1600, 2000, 5000, 40000, 65500};                                                                                           // array containing carbon dioxide conditions for the correct health effect output 
         uint8_t  co2_output[9]  = {1, 2, 3, 4, 5, 6, 7, 8, 9};                                                                                                                        // voice lines for the specific health effect caused by the carbon dioxide 
         for (uint8_t k = 0; k < 9; k++) {                                                                                                                                             // loop through the first 9 elements of the values array, always comparing i and i+1
@@ -393,7 +421,7 @@ void loop() {
         }
 
         // output volatile organic compounds health effect
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         uint8_t voc_values[6] = {0, 5, 10, 15, 50, 255};                                                                                                                              // array containing the VOC conditions for specific voice lines
         uint8_t voc_output[5] = {1, 2, 3, 4, 5};                                                                                                                                      // array containing all output voice lines
         for (uint8_t h = 0; h < 5; h++) {                                                                                                                                             // for loop to simplify a multitude of if/else if
@@ -411,40 +439,38 @@ void loop() {
 //------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 6 >> Command: "Details about my location."------------------------------------------------------------------------------------------------------------------
       case 6:
       {
-        BHY2.update();
-        float heading = orientation.heading();                                                                                                                                        // declare heading variable
-        float pitch   = orientation.pitch();                                                                                                                                          // declare pitch variable
-        float roll    = orientation.roll();                                                                                                                                           // declare roll variable
+        BHY2.update();                                                                                                                                                                // update Bosch sensor values
 
+        // altitude output in kilometers and meters
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        PlayVoice(12);                                                                                                                                                                // Voice Line: "Based on your location, the estimated altitude is:"
+        DistanceFormatted(altitude);                                                                                                                                                  // altitude output formatted as kilometers and meters
+        
         //compass 16-point heading output
+        ThisThread::sleep_for(300);
         float   compass_points[18] = {0, 11.25, 33.75, 56.25, 78.75, 101.25, 123.75, 146.25, 168.75, 191.25, 213.75, 236.25, 258.75, 281.25, 303.75, 326.25, 348.75, 360};            // array containing all conditions for the different 16-point headings                                                                                                                                                       
         uint8_t compass_output[17] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};                                                                                     // compass heading outputs >> represents 1 of the 16 points on the compass, the 17th element is North repeated for 349.75 to 360 deg
         for (uint8_t m = 0; m < 17; m++) {
-          if (compass_points[m] <= heading && heading <= compass_points[m+1]) {                                                                                                       // if the heading angle is between the element i and i+1 then continue
+          if (compass_points[m] <= orientation.heading() && orientation.heading() <= compass_points[m+1]) {                                                                           // if the heading angle is between the element i and i+1 then continue
             PlayVoice(13);                                                                                                                                                            // Voice Line: "Your magnetic heading at the time of computation is towards:" 
             PlayVoice(758 + compass_output[m]);                                                                                                                                       // Voice Line: one of the 16 points on the compass (example: south-south-west
           }
         }
 
         // compass heading angle in degrees
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(14);                                                                                                                                                                // Voice Line: "Based on the angle of:"
-        DegreesFormatted(heading);                                                                                                                                                    // heading degrees formatted in function of a positive or negative value, with added "degrees" voice line
+        DegreesFormatted(orientation.heading());                                                                                                                                      // heading degrees formatted in function of a positive or negative value, with added "degrees" voice line
 
         // compass roll angle in degrees
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(15);                                                                                                                                                                // Voice Line: "With a compass roll of:"
-        DegreesFormatted(roll);                                                                                                                                                       // roll degrees formatted in function of a positive or negative value, with added "degrees" voice line
+        DegreesFormatted(orientation.pitch());                                                                                                                                        // roll degrees formatted in function of a positive or negative value, with added "degrees" voice line
 
         // compass pitch angle in degrees
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         PlayVoice(16);                                                                                                                                                                // Voice Line: "And a compass pitch of:"
-        DegreesFormatted(pitch);                                                                                                                                                      // pitch degrees formatted in function of a positive or negative value, with added "degrees" voice line
-
-        // altitude output in kilometers and meters
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
-        PlayVoice(12);                                                                                                                                                                // Voice Line: "Based on your location, the estimated altitude is:"
-        DistanceFormatted(altitude);                                                                                                                                                  // altitude output formatted as kilometers and meters
+        DegreesFormatted(orientation.roll());                                                                                                                                         // pitch degrees formatted in function of a positive or negative value, with added "degrees" voice line
         
         break;
       }
@@ -452,33 +478,33 @@ void loop() {
 //--------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 7 >> Command: "Identify the atmosphere physics!"----------------------------------------------------------------------------------------------------------------
       case 7:
       {
-        uint16_t physics_output[18] = {8, int(round(saturation_vapor_pressure + 1141)), 0, 9, int(round(water_vapor_pressure + 1141)), 0, 10, int(round(dry_air_pressure - 949 + 244)), 
-                                       0, 1132, int((air_density * 100) + 2140), 1121, 0, 1113, int(round(visible_light) + 1141), 0, 1114, int(round(infrared_light) + 1141)};
+        uint16_t physics_output[18] = {8, int(round(saturation_vapor_pressure + 1147)), 0, 9, int(round(water_vapor_pressure + 1147)), 0, 10, int(round(dry_air_pressure - 949 + 244)), 
+                                       0, 1132, int((air_density * 100) + 2146), 1121, 0, 1113, int(round(visible_light) + 1147), 0, 1114, int(round(infrared_light) + 1147)};
                                                                              
         for (uint8_t i = 0; i < 18; i++) {                                                                                                                                            // loop through all array elements
-          if (physics_output[i] == 0) delay(200);                                                                                                                                     // if the array element in position "i" is a 0, perform a 200ms delay
+          if (physics_output[i] == 0) ThisThread::sleep_for(200);                                                                                                                                     // if the array element in position "i" is a 0, perform a 200ms delay
           else PlayVoice(physics_output[i]);                                                                                                                                          // otherwise play the specific voice line
         }
 
         //gas resistance output
-        delay(300);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(300);                                                                                                                                                                   // delay between voice lines for smoother output
         if (gas_resistance_BME688 < 100) PlayVoice(49);                                                                                                                               // Voice Line: "The sensor needs to calibrate to the current environment before outputting an accurate gas resistance reading!"
         else if (gas_resistance_BME688 < 1000) {
           PlayVoice(50);                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"
-          PlayVoice(int(gas_resistance_BME688) + 1141);                                                                                                                               // Voice Line: number between 0 to 999 representing the gas resistance in ohms
+          PlayVoice(int(gas_resistance_BME688) + 1147);                                                                                                                               // Voice Line: number between 0 to 999 representing the gas resistance in ohms
           PlayVoice(52);                                                                                                                                                              // Voice Line: "ohms"                              
         } else {
           uint8_t  gas_kilo_ohms = gas_resistance_BME688 / 1000;                                                                                                                      // get the kiloohms part of the gas resistance
           uint16_t gas_ohms      = gas_resistance_BME688 % 1000;                                                                                                                      // get the ohms part of the gas resistance
         
           PlayVoice(50);                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"
-          PlayVoice(int(gas_kilo_ohms) + 1141);                                                                                                                                       // Voice Line: number between 0 to 999 representing the gas kiloohms part
+          PlayVoice(int(gas_kilo_ohms) + 1147);                                                                                                                                       // Voice Line: number between 0 to 999 representing the gas kiloohms part
           PlayVoice(51);                                                                                                                                                              // Voice Line: "kilo-ohms"
       
           if (gas_ohms != 0) {
-            delay(100);                                                                                                                                                               // delay between voice lines for smoother output
+            ThisThread::sleep_for(100);                                                                                                                                                               // delay between voice lines for smoother output
             PlayVoice(23);                                                                                                                                                            // Voice Line: "and"
-            PlayVoice(int(gas_ohms) + 1141);                                                                                                                                          // Voice Line: number between 1 and 999
+            PlayVoice(int(gas_ohms) + 1147);                                                                                                                                          // Voice Line: number between 1 and 999
             if (gas_ohms == 1) PlayVoice(1120);                                                                                                                                       // Voice Line: "ohm"  
             else PlayVoice(52);                                                                                                                                                       // Voice Line: "ohms"
           }
@@ -553,7 +579,7 @@ void loop() {
           PlayVoice(year_first_half + 1141);                                                                                                                                          // Play the number 0 - 99 for the first part of the year
           if (year_second_half == 0) PlayVoice(1124);                                                                                                                                 // Voice Line: "hundred"
           else PlayVoice(year_second_half + 1141);                                                                                                                                    // Play the number 0 - 99 for the second part of the year
-        } else PlayVoice(62);                                                                                                                                                         // Voice Line "The watch has not been setup. Please dock the watch and use the PC executable to sync the time and date!"
+        } else PlayVoice(62);  
        
         break;
       }
@@ -564,9 +590,9 @@ void loop() {
         if (volume_level > 5) {
           volume_level = volume_level - 10;                                                                                                                                           // reduce the volume variable by 10
           DFPlayer.volume(volume_level);                                                                                                                                              // set DFPlayer Mini volume to the specific variable value 
-          delay(200);
+          ThisThread::sleep_for(200);
           PlayVoice(61);                                                                                                                                                              // Voice Line: "The volume has been changed to:" 
-          PlayVoice(volume_level + 1141);                                                                                                                                             // play the voice line between 0 and 30 representing the volume level
+          PlayVoice(volume_level + 1147);                                                                                                                                             // play the voice line between 0 and 30 representing the volume level
         } else if (volume_level <= 5) PlayVoice(1133);                                                                                                                                // Voice Line: "Volume is at the highest level of 30! It cannot be increased further!"
         break;
       }
@@ -578,9 +604,9 @@ void loop() {
         if (volume_level <= 25) {
           volume_level = volume_level + 5;                                                                                                                                            // increase the volume variable by 5
           DFPlayer.volume(volume_level);                                                                                                                                              // set DFPlayer Mini volume to the specific variable value    
-          delay(200);
+          ThisThread::sleep_for(200);
           PlayVoice(61);                                                                                                                                                              // Voice Line: "The volume has been changed to:" 
-          PlayVoice(volume_level + 1141);                                                                                                                                             // play the voice line between 0 and 30 representing the volume level
+          PlayVoice(volume_level + 1147);                                                                                                                                             // play the voice line between 0 and 30 representing the volume level
         } else if (volume_level == 30) PlayVoice(1134);                                                                                                                               // Voice Line: "Volume is at the lowest level of 5! It cannot be decreased further!"
         break;
       }
@@ -600,19 +626,19 @@ void loop() {
         if (bestLabels[0] == 5) PlayVoice(allLabels[1] + 742);                                                                                                                        // every label repeats once. XGBoost has been selected for ML Classification as the most robust model
         else {  
           PlayVoice(bestLabels[0] + 742);                                                                                                                                             // the most common classification out of all 4 models
-          delay(200);                                                                                                                                                                 // delay between voice lines for smoother output
+          ThisThread::sleep_for(200);                                                                                                                                                                 // delay between voice lines for smoother output
           if (bestLabels[0] != 5 && bestLabels[0] != bestLabels[1]) PlayVoice(bestLabels[1] + 747);                                                                                   // if 2 outputs repeat twice with all ML models, then also output the chance of the 2nd classification
         }
 
         // machine learning rainfall regression output
-        delay(200);                                                                                                                                                                   // delay between voice lines for smoother output
+        ThisThread::sleep_for(200);                                                                                                                                                                   // delay between voice lines for smoother output
         if (int(dataReceived[4] * 100) == 0) PlayVoice(1115);                                                                                                                         // Voice Line: "In view of the weather classification, I can also forecast that there will be no rainfall"
         else if (int(dataReceived[4]) > 35) {                                                                                                                                         // if the predicted rainfall is higher than 35 millimeters (last voice line in numbers)
             PlayVoice(752);                                                                                                                                                           // Voice Line: "In view of the weather classification, I can forecast the precipitation amount to:"
             PlayVoice(1123);                                                                                                                                                          // Voice Line: "A computed value higher than 35"
         } else {
             PlayVoice(752);                                                                                                                                                           // Voice Line: "In view of the weather classification, I can forecast the precipitation amount to:"
-            PlayVoice(int(dataReceived[4] * 100) + 2140);                                                                                                                             // Voice Line: number between 0.01 and 35.00
+            PlayVoice(int(dataReceived[4] * 100) + 2146);                                                                                                                             // Voice Line: number between 0.01 and 35.00
             PlayVoice(1118);                                                                                                                                                          // Voice Line: "millimeters"
         }
         
@@ -645,8 +671,48 @@ void loop() {
         PlayVoice(60);                                                                                                                                                                // Voice Line: "Deep Learning issue detected. Failed to run the classifier!"
         break;
       }
+
+//------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 18 >> Command: "Relevant location vectors!"----------------------------------------------------------------------------------------------------------------- 
+      case 18:
+      {
+        BHY2.update();                                                                                                                                                                // update Bosch Sensors
+
+        // gravity vector output
+        ThisThread::sleep_for(300);
+        PlayVoice(1136);
+        PlayVoice(1138);
+        CoordinateFormatted(gravityvector.x());
+
+        ThisThread::sleep_for(200);
+        PlayVoice(1139);
+        CoordinateFormatted(gravityvector.y());
+
+        ThisThread::sleep_for(200);
+        PlayVoice(1140);
+        CoordinateFormatted(gravityvector.z());
+
+        // geomagnetic rotation vector output
+        ThisThread::sleep_for(300);
+        PlayVoice(1137);
+        PlayVoice(1138);
+        CoordinateFormatted(geomagneticrotationvector.x());
+
+        ThisThread::sleep_for(200);
+        PlayVoice(1139);
+        CoordinateFormatted(geomagneticrotationvector.x());
+
+        ThisThread::sleep_for(200);
+        PlayVoice(1140);
+        CoordinateFormatted(geomagneticrotationvector.x());
+
+        ThisThread::sleep_for(200);
+        PlayVoice(1141);
+        CoordinateFormatted(geomagneticrotationvector.x());
+        
+      }
     }
-  }                                                                                                                                                                
+  }
+  ThisThread::sleep_for(1000); 
 }
 
 
@@ -664,7 +730,7 @@ uint8_t DiscomfortComputation(float temperature, uint8_t humidity) {
 //----------------------------------------------------------------------------------------------------------------------------------------------------SPEECH FUNCTION-------------------------------------------------------------------------------------------------------------------------------------------------------
 void PlayVoice(int file) {
   DFPlayer.play(file);                                                                                                                                                                // play the wav file specified with the play function of the DFPlayer object
-  delay(500);                                                                                                                                                                         // delay 500ms necessary to compute the command >> any delay higher than 150ms works 
+  ThisThread::sleep_for(500);                                                                                                                                                                         // delay 500ms necessary to compute the command >> any delay higher than 150ms works 
   while (!digitalRead(busy_pin));                                                                                                                                                     // block the code for the duration of the file playing >> busy pin will be LOW
 } 
 
@@ -681,23 +747,23 @@ void TemperatureFormatted(float temperature) {
 void DistanceFormatted(int32_t distance_value) {
   if (distance_value < 0) {                                                                                                                                                           // if the distance is negative then proceed
       PlayVoice(43);                                                                                                                                                                  // Voice Line: "negative"
-      PlayVoice(abs(distance_value) + 1141);                                                                                                                                          // Voice Line: Absolute value of the distance as a number between 0 and 999
+      PlayVoice(abs(distance_value) + 1147);                                                                                                                                          // Voice Line: Absolute value of the distance as a number between 0 and 999
       MetersFormatted(abs(distance_value));                                                                                                                                           // Formatting Meters or Meter output depending on the value
   } else if (distance_value >= 0 && distance_value < 1000) {
-      PlayVoice(distance_value + 1141);                                                                                                                                               // Voice Line: number between 0 and 999
+      PlayVoice(distance_value + 1147);                                                                                                                                               // Voice Line: number between 0 and 999
       MetersFormatted(distance_value);                                                                                                                                                // Formatting Meters or Meter output depending on the value
   } else {
       uint8_t  distance_value_kilometers = distance_value / 1000;                                                                                                                     // find from the given value the number of kilometers
       uint16_t distance_value_meters     = distance_value % 1000;                                                                                                                     // find from the given value the number of meters
   
-      PlayVoice(distance_value_kilometers + 1141);                                                                                                                                    // Voice Line: number between 0 and 999 
+      PlayVoice(distance_value_kilometers + 1147);                                                                                                                                    // Voice Line: number between 0 and 999 
       if (distance_value_kilometers == 1) PlayVoice(45);                                                                                                                              // if the distance_travelled is 1 kilometer + x meters, then say "kilometer" voice line, not "kilometers"
       else PlayVoice(46);                                                                                                                                                             // the distance_travelled is higher than 1 kilometer, so say "kilometers"
 
       if (distance_value_meters != 0) {
-        delay(100);                                                                                                                                                                   // helps with voice smoothness
+        ThisThread::sleep_for(100);                                                                                                                                                                   // helps with voice smoothness
         PlayVoice(23);                                                                                                                                                                // Voice Line: "and"
-        PlayVoice(int(distance_value_meters) + 1141);                                                                                                                                 // Voice Line: number between 0 and 999
+        PlayVoice(int(distance_value_meters) + 1147);                                                                                                                                 // Voice Line: number between 0 and 999
         MetersFormatted(distance_value_meters);                                                                                                                                       // Formatting Meters or Meter output depending on the value
       }
   }
@@ -712,18 +778,18 @@ void MetersFormatted(uint16_t meters) {
 //------------------------------------------------------------------------------------------------------------------------------TOTAL/CURRENT STEPS & KILOCALORIES/KILOJOULS OUTPUT FORMATTED-------------------------------------------------------------------------------------------------------------------------------
 void OutputFormatted(unsigned long output) { 
   if (output < 1000) {                                                                                                                                                                // if the output is lower than 1 thousand, then use the voice lines available for the number speech
-      PlayVoice(int(output) + 1141);                                                                                                                                                  // Voice Line: number between 0 and 999
+      PlayVoice(int(output) + 1147);                                                                                                                                                  // Voice Line: number between 0 and 999
   } else if (output >= 1000) {                                                                                                                                                        // if the output is higher or equal to 1000, then convert the output to thousand + remainder
       uint8_t  output_thousands = output / 1000;                                                                                                                                      // divide the value by 1000 to get the number of thousands
       uint16_t output_remainder = output % 1000;                                                                                                                                      // use Arduino Modulo function to get the remaining amount
   
-      PlayVoice(output_thousands + 1141);                                                                                                                                             // Voice Line: number between 0 and 999
+      PlayVoice(output_thousands + 1147);                                                                                                                                             // Voice Line: number between 0 and 999
       PlayVoice(1116);                                                                                                                                                                // Voice Line: "thousand"
       
       if (output_remainder != 0) {
-        delay(100);                                                                                                                                                                   // helps with voice smoothness
+        ThisThread::sleep_for(100);                                                                                                                                                                   // helps with voice smoothness
         PlayVoice(23);                                                                                                                                                                // Voice Line: "and"
-        PlayVoice(int(output_remainder) + 1141);                                                                                                                                      // Voice Line: number between 0 and 999
+        PlayVoice(int(output_remainder) + 1147);                                                                                                                                      // Voice Line: number between 0 and 999
       }                                              
   }
 }
@@ -732,6 +798,19 @@ void OutputFormatted(unsigned long output) {
 void DegreesFormatted(float deg_value) {
   if (deg_value < 0) PlayVoice(43);                                                                                                                                                   // if the given degrees value is negative, then play the "negative" voice line
   PlayVoice(int(round(abs(deg_value)) + 381));                                                                                                                                        // Voice Line: between 0 to 360 degrees 
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------COORDINATES OUTPUT FORMATTED-----------------------------------------------------------------------------------------------------------------------------------------------
+void CoordinateFormatted(float coord_given) {
+  if (coord_given < 0) PlayVoice(43); 
+  
+  uint16_t absolute_coord_value = abs(coord_given);                                                                                                                                                                                  // Voice Line: "negative"
+  if (absolute_coord_value == 0) PlayVoice(1147);
+  else if (absolute_coord_value > 0 && absolute_coord_value <= 35) {
+      uint16_t processed_coord = int(round((absolute_coord_value * 1000) / 10));
+      PlayVoice(processed_coord + 2146);
+  } else OutputFormatted(absolute_coord_value);
+  
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------MAIN SENSORS THRESHOLDING/EWMA FILTERING-----------------------------------------------------------------------------------------------------------------------------------------
@@ -745,7 +824,7 @@ void UpdateMainSensors(void) {
     temperature_BME688_readings += bsec.comp_t();                                                                                                                                     // sum all the values from the array to create the temperature 2 threshold value
     pressure_BMP390_readings    += pressure.value();                                                                                                                                  // sum all the values from the array to create the pressure threshold value
     humidity_BME688_readings    += bsec.comp_h();                                                                                                                                     // sum all the values from the array to create the humidity threshold value
-    delay(50);                                                                                                                                                                        // get a new value every 50ms => 500ms + 12ms total runtime of loop
+    ThisThread::sleep_for(50);                                                                                                                                                                        // get a new value every 50ms => 500ms + 12ms total runtime of loop
   }
 
   float temp_BMP390_outlier_higher_bound   = 1.20 * (temperature_BMP390_readings / 10);                                                                                               // 120% of the average of the last 10 values
@@ -775,18 +854,42 @@ void UpdateMainSensors(void) {
         humidity_BME688_filtered = humidity_BME688_ewma.filter(bsec.comp_h());                                                                                                        // update BME688 humidity filter variable 
         h_BME688++;                                                                                                                                                                   // add +1 every time the humidity filter has been updated >> maximum 10
     }
-    delay(100);
+    ThisThread::sleep_for(100);
  }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------HEART MONITOR OUTPUT--------------------------------------------------------------------------------------------------------------------------------------------------
 void HeartMonitor(void) {
-  heartrate.getValue(heartrate_pin);                                                                                                                                                  // analog heart rate sampled values
-  uint8_t rate_value = heartrate.getRate();                                                                                                                                           // get heart rate value 
-  if(rate_value)  {                                                                                                                                                                   // if the sensor has been positioned properly
-    //Serial.println("The heart rate is: " + String(rate_value));                                                                                                                     // play voice for the heart rate value
+  PlayVoice(25);
+
+  uint16_t heart_value = 0;
+  uint16_t last_beat = 0;
+  
+  for (uint8_t i = 0; i < 8;) {
+    heart_value = analogRead(heartrate_pin);
+    if (heart_value > last_beat) {
+      last_beat = heart_value;
+      i++;
+    }
   }
-  delay(10);
+
+  ThisThread::sleep_for(300);
+  uint8_t bpm_filtered = 0;
+  for (uint8_t i = 0; i < 10; i++) {
+    heart_value = analogRead(heartrate_pin);
+    bpm_filtered = (heart_rate.filter(heart_value))/10;
+  }
+
+  BHY2.update();
+  String motion_event = motion_detection.toString();
+  
+  if (motion_event.equals("Event detected\n")) PlayVoice(26); 
+  else {
+    if (bpm_filtered >= 50 && bpm_filtered < 120) {
+      PlayVoice(27);
+      PlayVoice(bpm_filtered + 15 - 50 + 776);                                                                                                                                        // play voice for the heart rate value
+    } else if (bpm_filtered >= 120) PlayVoice(5647);
+  }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------VARIABLE ROUNDING TO HALF INTEGER-------------------------------------------------------------------------------------------------------------------------------------------
@@ -795,18 +898,16 @@ float RoundToHalfInteger(float x) {
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------TIMEDATE SYNC PROCESSING-----------------------------------------------------------------------------------------------------------------------------------------------
-void ProcessSyncMessage(void) {
+void ProcessSyncMessage() {
   unsigned long pctime;                                                                                                                                                               // variable to store the correct timedate received from the PC Serial
   const unsigned long DEFAULT_TIME = 1357041600;                                                                                                                                      // Jan 1 2013
 
   pctime = Serial.parseInt();
-  if ( pctime >= DEFAULT_TIME) {                                                                                                                                                      // check the integer is a valid time (greater than Jan 1 2013)
-    setTime(pctime);                                                                                                                                                                  // sync Arduino clock to the time received on the serial port
-  }
+  if ( pctime >= DEFAULT_TIME) setTime(pctime);                                                                                                                                        // check the integer is a valid time (greater than Jan 1 2013) and set the time
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------REQUEST TIMEDATE SYNC FUNCTION------------------------------------------------------------------------------------------------------------------------------------------------
-time_t RequestSync(void) {
+time_t RequestSync() {
   Serial.write(TIME_REQUEST);                                                                                                                                                         // serial write the sync request header
   return 0;                                                                                                                                                                           // the time will be sent later in response to serial mesg
 }

@@ -1,7 +1,7 @@
 #include "Arduino_BHY2.h"
 
 
-SensorQuaternion gravityvector(SENSOR_ID_GRA);
+SensorXYZ gravityvector(SENSOR_ID_GRA);
 SensorQuaternion rotationvector(SENSOR_ID_RV);
 SensorQuaternion gamerotationvector(SENSOR_ID_GAMERV);
 SensorQuaternion geomagneticrotationvector(SENSOR_ID_GEORV);
