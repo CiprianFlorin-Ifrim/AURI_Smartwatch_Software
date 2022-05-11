@@ -681,37 +681,36 @@ void loop() {
       {
         BHY2.update();                                                                                                                                                                // update Bosch Sensors
 
-        // gravity vector output
-        ThisThread::sleep_for(300);
-        PlayVoice(1136);
-        PlayVoice(1138);
-        CoordinateFormatted(gravityvector.x());
+        // gravity vector output                                                                                                                                                      
+        PlayVoice(1136);                                                                                                                                                              // Voice Line: "The gravity vector quaternion values are as follows"
+        PlayVoice(1138);                                                                                                                                                              // Voice Line: "X"
+        CoordinateFormatted(gravityvector.x());                                                                                                                                       // compute the value accordingly for voice output
 
-        ThisThread::sleep_for(200);
-        PlayVoice(1139);
-        CoordinateFormatted(gravityvector.y());
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay for a pause in the outputs to not have voice lines play one after the other
+        PlayVoice(1139);                                                                                                                                                              // Voice Line: "Y"
+        CoordinateFormatted(gravityvector.y());                                                                                                                                       // compute the value accordingly for voice output
 
-        ThisThread::sleep_for(200);
-        PlayVoice(1140);
-        CoordinateFormatted(gravityvector.z());
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay for a pause in the outputs to not have voice lines play one after the other
+        PlayVoice(1140);                                                                                                                                                              // Voice Line: "Z"
+        CoordinateFormatted(gravityvector.z());                                                                                                                                       // compute the value accordingly for voice output
 
         // geomagnetic rotation vector output
-        ThisThread::sleep_for(300);
-        PlayVoice(1137);
-        PlayVoice(1138);
-        CoordinateFormatted(geomagneticrotationvector.x());
+        ThisThread::sleep_for(300);                                                                                                                                                   // delay for a pause in the outputs to not have voice lines play one after the other
+        PlayVoice(1137);                                                                                                                                                              // Voice Line: "Meanwhile, the geomagnetic rotation vector has the following coordinates"
+        PlayVoice(1138);                                                                                                                                                              // Voice Line: "X"
+        CoordinateFormatted(geomagneticrotationvector.x());                                                                                                                           // compute the value accordingly for voice output
 
-        ThisThread::sleep_for(200);
-        PlayVoice(1139);
-        CoordinateFormatted(geomagneticrotationvector.x());
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay for a pause in the outputs to not have voice lines play one after the other
+        PlayVoice(1139);                                                                                                                                                              // Voice Line: "Y"
+        CoordinateFormatted(geomagneticrotationvector.x());                                                                                                                           // compute the value accordingly for voice output
 
-        ThisThread::sleep_for(200);
-        PlayVoice(1140);
-        CoordinateFormatted(geomagneticrotationvector.x());
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay for a pause in the outputs to not have voice lines play one after the other
+        PlayVoice(1140);                                                                                                                                                              // Voice Line: "Z"
+        CoordinateFormatted(geomagneticrotationvector.x());                                                                                                                           // compute the value accordingly for voice output
 
-        ThisThread::sleep_for(200);
-        PlayVoice(1141);
-        CoordinateFormatted(geomagneticrotationvector.x());
+        ThisThread::sleep_for(200);                                                                                                                                                   // delay for a pause in the outputs to not have voice lines play one after the other
+        PlayVoice(1141);                                                                                                                                                              // Voice Line: "W"
+        CoordinateFormatted(geomagneticrotationvector.x());                                                                                                                           // compute the value accordingly for voice output
         
       }
     }
@@ -865,34 +864,34 @@ void UpdateMainSensors(void) {
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------HEART MONITOR OUTPUT--------------------------------------------------------------------------------------------------------------------------------------------------
 void HeartMonitor(void) {
-  PlayVoice(25);                                                                                                                                                                      // Voice Line: "
+  PlayVoice(25);                                                                                                                                                                      // Voice Line: "Please stand down and relax your arm during the heart rate measurement."
 
-  BHY2.update();
-  String motion_event = motion_detection.toString();
+  BHY2.update();                                                                                                                                                                      // update Bosch sensors
+  String motion_event = motion_detection.toString();                                                                                                                                  // save the string
   
-  if (motion_event.equals("Event detected\n")) PlayVoice(26); 
-  else {
+  if (motion_event.equals("Event detected\n")) PlayVoice(26);                                                                                                                         // if motion then play the Voice Line: "My sensors are telling me that you are active, please stand still for an accurate reading!"
+  else {                                                                                                                                                                              // else perform the heart rate processing
     uint16_t heart_value = 0, last_beat = 0;
     
-    for (uint8_t i = 0; i < 8;) {
-      heart_value = analogRead(heartrate_pin);
-      if (heart_value > last_beat) {
-        last_beat = heart_value;
-        i++;
-      }
+    for (uint8_t i = 0; i < 8;) {                                                                                                                                                     // start a for loop with 8 iterations
+      heart_value = analogRead(heartrate_pin);                                                                                                                                        // read the analog value
+      if (heart_value > last_beat) {                                                                                                                                                  // if the new value is higher than the last then:
+        last_beat = heart_value;                                                                                                                                                      // store it for the use in the next iteration
+        i++;                                                                                                                                                                          // increase the i by 1 >> perform this until it reaches 7 and the loop breaks
+      }                                                                                                                                                                               // explanation: if the value has increase 8 times it a row, then the readings can be considered as heart rate values
     }
   
-    ThisThread::sleep_for(300);
-    uint8_t bpm_filtered = 0;
-    for (uint8_t i = 0; i < 10; i++) {
-      heart_value = analogRead(heartrate_pin);
-      bpm_filtered = (heart_rate.filter(heart_value))/10;
+    ThisThread::sleep_for(300);                                                                                                                                                       // the voice lines play immediately one after the other, the delay adds a pause
+    uint8_t bpm_filtered = 0;                                                                                                                                                         // set the filtered variable as 0
+    for (uint8_t i = 0; i < 10; i++) {                                                                                                                                                // perform 10 iterations
+      heart_value = analogRead(heartrate_pin);                                                                                                                                        // read the analog value of the heart rate sensor SEN0203
+      bpm_filtered = (heart_rate.filter(heart_value))/10 + 15;                                                                                                                        // pass it to the exponentially weighted moving average, but divide by 10 and add 15 which represents the formula for output
     }
  
-    if (bpm_filtered >= 50 && bpm_filtered < 120) {
-      PlayVoice(27);
-      PlayVoice(bpm_filtered + 15 - 50 + 776);                                                                                                                                        // play voice for the heart rate value
-    } else if (bpm_filtered >= 120) PlayVoice(5647);
+    if (bpm_filtered >= 50 && bpm_filtered < 120) {                                                                                                                                   // if the filtered BMP value is between those 2 values then proceed
+      PlayVoice(27);                                                                                                                                                                  // Voice Line: "I can report the heart rate is at:"
+      PlayVoice(bpm_filtered - 50 + 776);                                                                                                                                             // play voice for the heart rate value
+    } else if (bpm_filtered >= 120) PlayVoice(5647);                                                                                                                                  // Voice Line: "The heart rate is over 120 BMP!"
   }
 }
 
