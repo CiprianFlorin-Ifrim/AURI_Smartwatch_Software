@@ -66,7 +66,7 @@ bool    charging_flag    = false;                                               
 bool    low_battery_mode = false;                                                                                                                                                     // flag to set the system in low power mode >> the user cannot use voice commands and the environment checks update every 5 minutes
 
 float   temperature_BMP390_filtered, temperature_BME688_filtered, pressure_BMP390_filtered, humidity_BME688_filtered;                                                                 // define global float variables for the filtered sensor outputs
-uint8_t volume_level  = 25;
+uint_least8_t volume_level  = 25;
 
 
 
@@ -117,14 +117,14 @@ void setup() {
 void loop() {
 //----------------------------------------------------------------------------------------------------------------------------------------ENVIRONMENT CONTAMINATION/QUALITY CHECKS------------------------------------------------------------------------------------------------------------------------------------------
   BHY2.update();                                                                                                                                                                      // refresh Bosch Sensors
-  uint8_t  discomfort_index = DiscomfortComputation(((1.0095 * bsec.comp_t()) - 4.8051), round((1.4383 * bsec.comp_h()) - 2.5628));                                                   // compute discomfort index by using function
-  uint16_t uv_index         = (uv.readUV()) / 100.0;                                                                                                                                  // SI1145 Sensor Output >> Estimated UV Index based on the rapport Infrared and Visible Light
+  uint_least8_t  discomfort_index = DiscomfortComputation(((1.0095 * bsec.comp_t()) - 4.8051), round((1.4383 * bsec.comp_h()) - 2.5628));                                             // compute discomfort index by using function
+  uint_least16_t uv_index         = (uv.readUV()) / 100.0;                                                                                                                            // SI1145 Sensor Output >> Estimated UV Index based on the rapport Infrared and Visible Light
   
-  uint16_t checks[9]          = {pressure.value(), bq25120_getLevel(), pressure.value(), discomfort_index, uv_index, bsec.iaq(), bsec.co2_eq(), bsec.b_voc_eq(), bsec.b_voc_eq()};    // array holding all sensor values
-  uint16_t conditions[9]      = {1007, 2, 1023, 32, 8, 225, 2100, 10, 15};                                                                                                            // array holding all conditions for each specific sensor for what would be considered extreme values/health adverse effects
-  uint16_t voice_outputs[9]   = {368, 1135, 369, 375, 1130, 364, 357, 348, 349};                                                                                                      // array containing all voice lines for each sensor based on the specific extreme condition
+  uint_least16_t checks[9]        = {pressure.value(), bq25120_getLevel(), pressure.value(), discomfort_index, uv_index, bsec.iaq(), bsec.co2_eq(), bsec.b_voc_eq(), bsec.b_voc_eq()};    
+  uint_least16_t conditions[9]    = {1007, 2, 1023, 32, 8, 225, 2100, 10, 15};                                                                                                        // array holding all conditions for each specific sensor for what would be considered extreme values/health adverse effects
+  uint_least16_t voice_outputs[9] = {368, 1135, 369, 375, 1130, 364, 357, 348, 349};                                                                                                  // array containing all voice lines for each sensor based on the specific extreme condition
   
-  for (uint8_t i = 0; i < 9; i++) {                                                                                                                                                   // for loop to consider all conditions in an elegant manner
+  for (uint_least8_t i = 0; i < 9; i++) {                                                                                                                                                   // for loop to consider all conditions in an elegant manner
     if (i <= 1 && condition_flags[i] == false) {                                                                                                                                      // if the array element is 0 (pressure) and the value is lower, then proceed                                                                                                                                              
         if (checks[i] <= conditions[i] && checks[i] > 0) {                                                                                                                            // if the read value is lower than the threshold but higher than 0 >> helps with empty sensor frames at the start of the system
           condition_flags[i] = true;                                                                                                                                                  // make status flag TRUE
@@ -140,7 +140,7 @@ void loop() {
   }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------BATTERY CHARGING CHECK---------------------------------------------------------------------------------------------------------------------------------------------------
-  uint8_t battery_status = bq25120_getStatus();                                                                                                                                       // get the status of the battery and save it as a byte
+  byte battery_status = bq25120_getStatus();                                                                                                                                          // get the status of the battery and save it as a byte
   if (battery_status == 195 && charging_flag == false) {                                                                                                                              // if the watch is charging and the flag is false, then proceed
     charging_flag = true;                                                                                                                                                             // set the flag to true
     PlayVoice(5648);                                                                                                                                                                  // inform the user the watch is charging
@@ -155,10 +155,10 @@ void loop() {
 //------------------------------------------------------------------------------------------------------------------------------------MAIN CODE - SENSOR COMPUTATION - OUTPUT SELECTION-------------------------------------------------------------------------------------------------------------------------------------
   // using the IR sensor for testing when the system is on the desk
   int activation = uv.readIR();
-  if (activation >= 330 && low_battery_mode == false) {                                                                                                                               // if the gesture event was recognised, then start the computation and inform the user
+  if (activation >= 330 && low_battery_mode == false) {                                                                                                                               // if the gesture event was recognised, with the battery level higher than 10%, then start the computation and inform the user
     // initialise system >> inform user
     nicla::leds.setColor(red);                                                                                                                                                        // set the led colour of the Nicla Sense ME to RED as a visual cue to the user that the system has been activated
-    uint8_t random_listening = random(1, 11);                                                                                                                                         // returns a random number between min(1) and max-1(10) >> equivalent to the 10 listening voice lines available
+    uint_least8_t random_listening = random(1, 11);                                                                                                                                   // returns a random number between min(1) and max-1(10) >> equivalent to the 10 listening voice lines available
     DFPlayer.play(random_listening + 1101);                                                                                                                                           // play audio to inform user that the system is listening >> instead of the voice function that waits for the file to end first                                                                                                                                                                                      
 
     unsigned long last_steps = steps.value();                                                                                                                                         // set the last steps in a variable for future usage in per command calculation
@@ -171,12 +171,13 @@ void loop() {
     float temperature_regressed_fusion  = (temperature_BMP390_regressed + temperature_BME688_regressed) / 2;                                                                          // sensor fusion between the two temeperature outputs after filtering and regression
     float temperature_fusion_fahrenheit = (temperature_regressed_fusion * 9 / 5) + 32;                                                                                                // conversion of the temperature fusion value to Fahrenheit to be used in following equations
     float pressure_BMP390_regressed     = 1.00718 * pressure_BMP390_filtered;                                                                                                         // linearly regressed pressure output from BMP390 once filtered with an Exponentially Weighted Moving Average Low-Pass Filter
-    uint8_t humidity_BME688_regressed   = round((1.4383 * humidity_BME688_filtered) - 2.5628);                                                                                        // linearly regressed humidity output from BME688 once filtered with an Exponentially Weighted Moving Average Low-Pass Filter
-    uint32_t gas_resistance_BME688      = bsec.comp_g();                                                                                                                              // air/gas resistance measure in Ohms
+   
+    uint_least8_t  humidity_BME688_regressed = round((1.4383 * humidity_BME688_filtered) - 2.5628);                                                                                   // linearly regressed humidity output from BME688 once filtered with an Exponentially Weighted Moving Average Low-Pass Filter
+    uint_least32_t gas_resistance_BME688     = bsec.comp_g();                                                                                                                         // air/gas resistance measure in Ohms
     
     float    visible_light  = uv.readVisible();                                                                                                                                       // SI1145 Sensor Output >> Human Visible Light (wavelengths from 380 to 700 nanometers)
     float    infrared_light = uv.readIR();                                                                                                                                            // SI1145 Sensor Output >> Infrared Light Amount (wavelengths from 780 nanometers and 1 millimeters)
-    uint16_t uv_index       = (uv.readUV()) / 100.0;                                                                                                                                  // SI1145 Sensor Output >> Estimated UV Index based on the rapport Infrared and Visible Light
+    uint_least16_t uv_index = (uv.readUV()) / 100.0;                                                                                                                                  // SI1145 Sensor Output >> Estimated UV Index based on the rapport Infrared and Visible Light
 
     const float sea_pressure_constant = 1013.25;                                                                                                                                      // sea level pressure constant >> 1013.25 hectoPascals
     int16_t     altitude              = ((pow((sea_pressure_constant / pressure_BMP390_regressed), (1 / 5.257)) - 1) * (temperature_regressed_fusion + 273.15)) / 0.0065;             // calculate the altitude by using the hypsometric formula
@@ -224,13 +225,13 @@ void loop() {
     
     // begin transfer from Nicla Sense ME to Seeed Xiao Sense through I2C
     Wire.beginTransmission(slave_address);                                                                                                                                            // transmit to device #8 (SlaveAddress is used)
-    for (uint8_t i = 0; i < sizeof(X); i++) I2C_writeAnything(X[i]);                                                                                                                  // transit every element from the features array individually using the I2C_Anything library >> enables the transmission of floats
+    for (uint_least8_t i = 0; i < sizeof(X); i++) I2C_writeAnything(X[i]);                                                                                                            // transit every element from the features array individually using the I2C_Anything library >> enables the transmission of floats
     Wire.endTransmission();                                                                                                                                                           // stop transmitting
 
     // wait for the Xiao Sense to finish recording the audio and performing the classification
     ThisThread::sleep_for(2500);                                                                                                                                                      // delay for time to send everything & time to unpack on the Xiao Sense & 350ms reaction delay & recording (1650ms)  >> circa 2050ms
     nicla::leds.setColor(off);                                                                                                                                                        // turn the LED off
-    uint8_t random_computing = random(1, 6);                                                                                                                                          // returns a random number between min(1) and max-1(5) >> equivalent to the 5 computation voice lines available
+    uint_least8_t random_computing = random(1, 6);                                                                                                                                    // returns a random number between min(1) and max-1(5) >> equivalent to the 5 computation voice lines available
     PlayVoice(random_computing + 1141);                                                                                                                                               // play random voice line between the 5 available
     ThisThread::sleep_for(100);                                                                                                                                                       // adds stability to the system 
     
@@ -238,7 +239,7 @@ void loop() {
     float dataReceived[6];                                                                                                                                                            // define float array of 6 elements for the data received (labels) 
     dataReceived[5] = 14;
     Wire.requestFrom(slave_address, sizeof(dataReceived));                                                                                                                            // request the voice command label + ML models labels (4) + ML precipitation regression
-    while (Wire.available()) for (uint8_t j = 0; j < sizeof(dataReceived); j++) I2C_readAnything(dataReceived[j]);                                                                    // slave may send less than requested >> for the duration 
+    while (Wire.available()) for (uint_least8_t j = 0; j < sizeof(dataReceived); j++) I2C_readAnything(dataReceived[j]);                                                              // slave may send less than requested >> for the duration 
     ThisThread::sleep_for(300);                                                                                                                                                       // adds stability to the system 
 
 
@@ -251,9 +252,9 @@ void loop() {
       case 0:  
       {         
         // battery checks
-        uint16_t battery_voltage_circuit    = battery.voltage();
-        uint8_t  battery_percentage_circuit = battery.level();
-        uint8_t  battery_level_bq25120      = bq25120_getLevel();
+        uint_least16_t battery_voltage_circuit    = battery.voltage();
+        uint_least8_t  battery_percentage_circuit = battery.level();
+        uint_least8_t  battery_level_bq25120      = bq25120_getLevel();
         byte     battery_fault_bq25120      = bq25120_getFaults();
 
         PlayVoice(int(battery_level_bq25120 + 37));                                                                                                                                   // 1 out of 5 voice lines representing the battery level as full, high, medium, low, empty based on the BQ25120 IC and custom library
@@ -317,10 +318,10 @@ void loop() {
         TemperatureFormatted(air_dew_point);                                                                                                                                          // air dew point temperature formatted output  
       
         //environment conditions outputs in a single array to save code footprint through a for loop
-        uint16_t environment_output[15] = {0, 53, int(round(temperature_fusion_fahrenheit) + 1147), 0, 4, int(round(humidity_BME688_regressed + 144)), 
+        uint_least16_t environment_output[15] = {0, 53, int(round(temperature_fusion_fahrenheit) + 1147), 0, 4, int(round(humidity_BME688_regressed + 144)), 
                                            0, 5, int(round(relative_humidity + 144)), 0, 7, int(round(pressure_BMP390_regressed - 949 + 244)), 0, 11, int(round(equivalent_sea_pressure - 949 + 244))};                        
                                                                                                           
-        for (uint8_t i = 0; i < 15; i++) {                                                                                                                                            // loop through all array elements
+        for (uint_least8_t i = 0; i < 15; i++) {                                                                                                                                      // loop through all array elements
           if (environment_output[i] == 0) ThisThread::sleep_for(200);                                                                                                                 // if the array element in position "i" is a 0, perform a 200ms delay
           else PlayVoice(environment_output[i]);                                                                                                                                      // otherwise play the specific voice line
         }
@@ -331,8 +332,8 @@ void loop() {
 //------------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 4 >> Command: "Present the health report!"------------------------------------------------------------------------------------------------------------------
       case 4:
       {
-        uint8_t discomfort_index = DiscomfortComputation(temperature_regressed_fusion, humidity_BME688_regressed);                                                                    // discomfort index formula
-        float   laser_skin_temp  = mlx.readObjectTempC() - 3.5;                                                                                                                       // sensor calibrated for skin temeperature detection through a tempered glass screen compared to the regular reading  
+        uint_least8_t discomfort_index = DiscomfortComputation(temperature_regressed_fusion, humidity_BME688_regressed);                                                              // discomfort index formula
+        float         laser_skin_temp  = mlx.readObjectTempC() - 3.5;                                                                                                                 // sensor calibrated for skin temeperature detection through a tempered glass screen compared to the regular reading  
 
         // output heart rate
         HeartMonitor();
@@ -344,9 +345,10 @@ void loop() {
         
         // output heat index health effect
         ThisThread::sleep_for(500);                                                                                                                                                   // delay between voice lines for smoother output
-        uint8_t heat_index_values[6] = {4, 26, 32, 39, 51, 150};                                                                                                                      // array containing heat index conditions for the correct health effect output
-        uint8_t heat_index_output[5] = {1, 2, 3, 4, 5};                                                                                                                               // voice lines for the specific health effect caused by heat index
-        for (uint8_t n = 0; n < 5; n++) {                                                                                                                                             // loop through the first 5 elements of the values array, always comparing i and i+1
+        uint_least8_t heat_index_values[6] = {4, 26, 32, 39, 51, 150};                                                                                                                // array containing heat index conditions for the correct health effect output
+        uint_least8_t heat_index_output[5] = {1, 2, 3, 4, 5};                                                                                                                         // voice lines for the specific health effect caused by heat index
+       
+        for (uint_least8_t n = 0; n < 5; n++) {                                                                                                                                       // loop through the first 5 elements of the values array, always comparing i and i+1
           if (temperature_regressed_fusion >= 4) {                                                                                                                                    // only output the heat index condition if it is higher than 4 degrees Celsius
             if (heat_index_values[n] < heat_index && heat_index <= heat_index_values[n+1]) {                                                                                          // compare condition from element i with element i+1 for the correct output
               PlayVoice(29);                                                                                                                                                          // Voice Line: "In terms of the effects of the environment on your health. The heat index stands at:"
@@ -358,9 +360,10 @@ void loop() {
 
         // output discomfort index health effect
         ThisThread::sleep_for(500);                                                                                                                                                   // delay between voice lines for smoother output
-        uint8_t discomfort_values[7] = {0, 21, 24, 27, 29, 32, 250};                                                                                                                  // array containing discomfort index conditions for the correct health effect output                                                                                                            
-        uint8_t discomfort_output[6] = {1, 2, 3, 4, 5, 6};                                                                                                                            // voice lines for the specific health effect caused by the discomfort 
-        for (uint8_t l = 0; l < 6; l++) {                                                                                                                                             // loop through the first 6 elements of the values array, always comparing i and i+1
+        uint_least8_t discomfort_values[7] = {0, 21, 24, 27, 29, 32, 250};                                                                                                            // array containing discomfort index conditions for the correct health effect output                                                                                                            
+        uint_least8_t discomfort_output[6] = {1, 2, 3, 4, 5, 6};                                                                                                                      // voice lines for the specific health effect caused by the discomfort 
+        
+        for (uint_least8_t l = 0; l < 6; l++) {                                                                                                                                       // loop through the first 6 elements of the values array, always comparing i and i+1
           if (discomfort_values[l] < discomfort_index && discomfort_index <= discomfort_values[l+1]) {                                                                                // compare condition from element i with element i+1 for the correct output
             PlayVoice(56);                                                                                                                                                            // Voice Line: "The discomfort index is currently at:" 
             PlayVoice(int(abs(discomfort_index)) + 1147);                                                                                                                             // output as a voice line the discomfort index number
@@ -376,9 +379,10 @@ void loop() {
 
         // output uv index health effect
         ThisThread::sleep_for(500);
-        uint8_t uv_index_values[6] = {0, 3, 6, 8, 11, 20};                                                                                                                            // array containing uv index conditions for the correct health effect output 
-        uint8_t uv_index_output[5] = {1, 2, 3, 4, 5};                                                                                                                                 // voice lines for the specific health effect caused by the uv index       
-        for (uint8_t m = 0; m < 5; m++) {                                                                                                                                             // loop through the first 5 elements of the values array, always comparing i and i+1
+        uint_least8_t uv_index_values[6] = {0, 3, 6, 8, 11, 20};                                                                                                                      // array containing uv index conditions for the correct health effect output 
+        uint_least8_t uv_index_output[5] = {1, 2, 3, 4, 5};                                                                                                                           // voice lines for the specific health effect caused by the uv index       
+        
+        for (uint_least8_t m = 0; m < 5; m++) {                                                                                                                                       // loop through the first 5 elements of the values array, always comparing i and i+1
           if (uv_index_values[m] <= uv_index && uv_index < uv_index_values[m+1]) {                                                                                                    // compare condition from element i with element i+1 for the correct output                                                                                             
             PlayVoice(uv_index_output[m] + 1126);                                                                                                                                     // output the specific uv index condition voice line
           }
@@ -391,10 +395,10 @@ void loop() {
       case 5:
       {
         BHY2.update();                                                                                                                                                                // update Bosch Sensors
-        uint8_t  bsec_accuracy  = bsec.accuracy();                                                                                                                                    // BSEC sensor accuracy - informes the user how accurate the outputs are >> it improves the more it is used
-        uint16_t air_quality    = bsec.iaq();                                                                                                                                         // BSEC Air Quality Index >> 0-500
-        uint32_t carbon_dioxide = bsec.co2_eq();                                                                                                                                      // BSEC Carbon Dioxide extimated value
-        float    volatile_mix   = bsec.b_voc_eq();                                                                                                                                    // BSEC Volatile Organic Compounds detected
+        uint_least8_t  bsec_accuracy  = bsec.accuracy();                                                                                                                              // BSEC sensor accuracy - informes the user how accurate the outputs are >> it improves the more it is used
+        uint_least16_t air_quality    = bsec.iaq();                                                                                                                                   // BSEC Air Quality Index >> 0-500
+        uint_least32_t carbon_dioxide = bsec.co2_eq();                                                                                                                                // BSEC Carbon Dioxide extimated value
+        float          volatile_mix   = bsec.b_voc_eq();                                                                                                                              // BSEC Volatile Organic Compounds detected
         
         // output BSEC sensor accuracy before proceeding with the BSEC readouts and health effects
         PlayVoice(63);                                                                                                                                                                // Voice Line: "Checking the system status. The BSEC sensor accuracy is at the level:" 
@@ -402,9 +406,10 @@ void loop() {
 
         // output iaq health effect
         ThisThread::sleep_for(300);                                                                                                                                                   // delay between voice lines for smoother output
-        uint16_t iaq_values[8] = {0, 50, 100, 150, 200, 250, 350, 500};                                                                                                               // array containing air quality index conditions for the correct health effect output 
-        uint8_t  iaq_output[7] = {1, 2, 3, 4, 5, 6, 7};                                                                                                                               // voice lines for the specific health effect caused by the discomfort
-        for (uint8_t j = 0; j < 7; j++) {                                                                                                                                             // loop through the first 7 elements of the values array, always comparing i and i+1
+        uint_least16_t iaq_values[8] = {0, 50, 100, 150, 200, 250, 350, 500};                                                                                                         // array containing air quality index conditions for the correct health effect output 
+        uint_least8_t  iaq_output[7] = {1, 2, 3, 4, 5, 6, 7};                                                                                                                         // voice lines for the specific health effect caused by the discomfort
+        
+        for (uint_least8_t j = 0; j < 7; j++) {                                                                                                                                       // loop through the first 7 elements of the values array, always comparing i and i+1
           if (iaq_values[j] < air_quality && air_quality <= iaq_values[j+1]) {                                                                                                        // compare condition from element i with element i+1 for the correct output                                                                                             
             PlayVoice(30);                                                                                                                                                            // Voice Line: "The air quality of your environment resides at:"
             PlayVoice(air_quality + 1147);                                                                                                                                            // output air quality index as a number between 0 and 500
@@ -415,9 +420,10 @@ void loop() {
 
         // output carbon dioxide health effect
         ThisThread::sleep_for(300);                                                                                                                                                   // delay between voice lines for smoother output
-        uint16_t co2_values[10] = {0, 400, 600, 900, 1100, 1600, 2000, 5000, 40000, 65500};                                                                                           // array containing carbon dioxide conditions for the correct health effect output 
-        uint8_t  co2_output[9]  = {1, 2, 3, 4, 5, 6, 7, 8, 9};                                                                                                                        // voice lines for the specific health effect caused by the carbon dioxide 
-        for (uint8_t k = 0; k < 9; k++) {                                                                                                                                             // loop through the first 9 elements of the values array, always comparing i and i+1
+        uint_least16_t co2_values[10] = {0, 400, 600, 900, 1100, 1600, 2000, 5000, 40000, 65500};                                                                                     // array containing carbon dioxide conditions for the correct health effect output 
+        uint_least8_t  co2_output[9]  = {1, 2, 3, 4, 5, 6, 7, 8, 9};                                                                                                                  // voice lines for the specific health effect caused by the carbon dioxide 
+        
+        for (uint_least8_t k = 0; k < 9; k++) {                                                                                                                                       // loop through the first 9 elements of the values array, always comparing i and i+1
           if (co2_values[k] < carbon_dioxide && carbon_dioxide <= co2_values[k+1]) {                                                                                                  // compare condition from element i with element i+1 for the correct output
             PlayVoice(31);                                                                                                                                                            // Voice Line: "In terms of Carbon Dioxide I have detected:"
             PlayVoice(co2_output[k] + 350);                                                                                                                                           // output the specific carbon dioxide condition voice line 
@@ -426,9 +432,10 @@ void loop() {
 
         // output volatile organic compounds health effect
         ThisThread::sleep_for(300);                                                                                                                                                   // delay between voice lines for smoother output
-        uint8_t voc_values[6] = {0, 5, 10, 15, 50, 255};                                                                                                                              // array containing the VOC conditions for specific voice lines
-        uint8_t voc_output[5] = {1, 2, 3, 4, 5};                                                                                                                                      // array containing all output voice lines
-        for (uint8_t h = 0; h < 5; h++) {                                                                                                                                             // for loop to simplify a multitude of if/else if
+        uint_least8_t voc_values[6] = {0, 5, 10, 15, 50, 255};                                                                                                                        // array containing the VOC conditions for specific voice lines
+        uint_least8_t voc_output[5] = {1, 2, 3, 4, 5};                                                                                                                                // array containing all output voice lines
+        
+        for (uint_least8_t h = 0; h < 5; h++) {                                                                                                                                       // for loop to simplify a multitude of if/else if
           if (voc_values[h] < volatile_mix && volatile_mix <= voc_values[h+1]) {                                                                                                      // if statement to check the corrent output based on the voc from the sensor
             PlayVoice(32);                                                                                                                                                            // Voice Line: "In addition, I have also detected"
             if (volatile_mix <= 50) PlayVoice(int(round(volatile_mix)) + 1007);                                                                                                       // Voice Line: between 0-50 "parts per million volatile organic compounds"
@@ -452,9 +459,10 @@ void loop() {
         
         //compass 16-point heading output
         ThisThread::sleep_for(300);
-        float   compass_points[18] = {0, 11.25, 33.75, 56.25, 78.75, 101.25, 123.75, 146.25, 168.75, 191.25, 213.75, 236.25, 258.75, 281.25, 303.75, 326.25, 348.75, 360};            // array containing all conditions for the different 16-point headings                                                                                                                                                       
-        uint8_t compass_output[17] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};                                                                                     // compass heading outputs >> represents 1 of the 16 points on the compass, the 17th element is North repeated for 349.75 to 360 deg
-        for (uint8_t m = 0; m < 17; m++) {
+        float         compass_points[18] = {0, 11.25, 33.75, 56.25, 78.75, 101.25, 123.75, 146.25, 168.75, 191.25, 213.75, 236.25, 258.75, 281.25, 303.75, 326.25, 348.75, 360};      // array containing all conditions for the different 16-point headings                                                                                                                                                       
+        uint_least8_t compass_output[17] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};                                                                               // compass heading outputs >> represents 1 of the 16 points on the compass, the 17th element is North repeated for 349.75 to 360 deg
+        
+        for (uint_least8_t m = 0; m < 17; m++) {
           if (compass_points[m] <= orientation.heading() && orientation.heading() <= compass_points[m+1]) {                                                                           // if the heading angle is between the element i and i+1 then continue
             PlayVoice(13);                                                                                                                                                            // Voice Line: "Your magnetic heading at the time of computation is towards:" 
             PlayVoice(758 + compass_output[m]);                                                                                                                                       // Voice Line: one of the 16 points on the compass (example: south-south-west
@@ -482,10 +490,10 @@ void loop() {
 //--------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 7 >> Command: "Identify the atmosphere physics!"----------------------------------------------------------------------------------------------------------------
       case 7:
       {
-        uint16_t physics_output[18] = {8, int(round(saturation_vapor_pressure + 1147)), 0, 9, int(round(water_vapor_pressure + 1147)), 0, 10, int(round(dry_air_pressure - 949 + 244)), 
+        uint_least16_t physics_output[18] = {8, int(round(saturation_vapor_pressure + 1147)), 0, 9, int(round(water_vapor_pressure + 1147)), 0, 10, int(round(dry_air_pressure - 949 + 244)), 
                                        0, 1132, int((air_density * 100) + 2146), 1121, 0, 1113, int(round(visible_light) + 1147), 0, 1114, int(round(infrared_light) + 1147)};
                                                                              
-        for (uint8_t i = 0; i < 18; i++) {                                                                                                                                            // loop through all array elements
+        for (uint_least8_t i = 0; i < 18; i++) {                                                                                                                                      // loop through all array elements
           if (physics_output[i] == 0) ThisThread::sleep_for(200);                                                                                                                     // if the array element in position "i" is a 0, perform a 200ms delay
           else PlayVoice(physics_output[i]);                                                                                                                                          // otherwise play the specific voice line
         }
@@ -495,20 +503,20 @@ void loop() {
         if (gas_resistance_BME688 < 100) PlayVoice(49);                                                                                                                               // Voice Line: "The sensor needs to calibrate to the current environment before outputting an accurate gas resistance reading!"
         else if (gas_resistance_BME688 < 1000) {
           PlayVoice(50);                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"
-          PlayVoice(int(gas_resistance_BME688) + 1147);                                                                                                                               // Voice Line: number between 0 to 999 representing the gas resistance in ohms
+          PlayVoice(gas_resistance_BME688 + 1147);                                                                                                                                    // Voice Line: number between 0 to 999 representing the gas resistance in ohms
           PlayVoice(52);                                                                                                                                                              // Voice Line: "ohms"                              
         } else {
-          uint8_t  gas_kilo_ohms = gas_resistance_BME688 / 1000;                                                                                                                      // get the kiloohms part of the gas resistance
-          uint16_t gas_ohms      = gas_resistance_BME688 % 1000;                                                                                                                      // get the ohms part of the gas resistance
+          uint_least8_t  gas_kilo_ohms = gas_resistance_BME688 / 1000;                                                                                                                // get the kiloohms part of the gas resistance
+          uint_least16_t gas_ohms      = gas_resistance_BME688 % 1000;                                                                                                                // get the ohms part of the gas resistance
         
           PlayVoice(50);                                                                                                                                                              // Voice Line: "The Gas Resistance subsists at a level of"
-          PlayVoice(int(gas_kilo_ohms) + 1147);                                                                                                                                       // Voice Line: number between 0 to 999 representing the gas kiloohms part
+          PlayVoice(gas_kilo_ohms + 1147);                                                                                                                                            // Voice Line: number between 0 to 999 representing the gas kiloohms part
           PlayVoice(51);                                                                                                                                                              // Voice Line: "kilo-ohms"
       
           if (gas_ohms != 0) {
             ThisThread::sleep_for(100);                                                                                                                                               // delay between voice lines for smoother output
             PlayVoice(23);                                                                                                                                                            // Voice Line: "and"
-            PlayVoice(int(gas_ohms) + 1147);                                                                                                                                          // Voice Line: number between 1 and 999
+            PlayVoice(gas_ohms + 1147);                                                                                                                                               // Voice Line: number between 1 and 999
             if (gas_ohms == 1) PlayVoice(1120);                                                                                                                                       // Voice Line: "ohm"  
             else PlayVoice(52);                                                                                                                                                       // Voice Line: "ohms"
           }
@@ -522,11 +530,11 @@ void loop() {
       {
         //steps counting
         BHY2.update();                                                                                                                                                                // Update all Bosch Sensors
-        unsigned long total_steps        = steps.value();                                                                                                                             // compute the total steps since the device has been turned on (if the battery dies, the total steps gets reset to 0)
-        unsigned long current_steps      = total_steps - last_steps;                                                                                                                  // compute the steps since the last time the command has been activated
-        uint16_t      kilocalories       = current_steps * 0.03344;                                                                                                                   // conversion of current steps to kilocalories                                                  
-        uint16_t      kilojouls          = kilocalories * 4.184;                                                                                                                      // conversion of kilocalories to kilojouls (energy)
-        uint32_t      distance_travelled = (current_steps / 1179) * 1000;                                                                                                             // convert from steps to kilometers, and then from kilometers to meters
+        unsigned long  total_steps        = steps.value();                                                                                                                            // compute the total steps since the device has been turned on (if the battery dies, the total steps gets reset to 0)
+        unsigned long  current_steps      = total_steps - last_steps;                                                                                                                 // compute the steps since the last time the command has been activated
+        uint_least16_t kilocalories       = current_steps * 0.03344;                                                                                                                  // conversion of current steps to kilocalories                                                  
+        uint_least16_t kilojouls          = kilocalories * 4.184;                                                                                                                     // conversion of kilocalories to kilojouls (energy)
+        uint_least32_t distance_travelled = (current_steps / 1179) * 1000;                                                                                                            // convert from steps to kilometers, and then from kilometers to meters
 
         //total steps
         PlayVoice(17);                                                                                                                                                                // Voice Line: "The total aggregate of steps adds up to:"
@@ -556,7 +564,7 @@ void loop() {
 //---------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 9 >> Command: "Thanks for the info provided!"------------------------------------------------------------------------------------------------------------------
       case 9:
       {
-        uint8_t random_thanks = random(1, 7);                                                                                                                                         // returns a random number between min(1) and max-1(10) >> equivalent to the 6 thanks voice lines available
+        uint_least8_t random_thanks = random(1, 7);                                                                                                                                   // returns a random number between min(1) and max-1(10) >> equivalent to the 6 thanks voice lines available
         PlayVoice(random_thanks + 752);                                                                                                                                               // Voice Line: randomly chosen "you are welcome" voice line       
         break;
       }
@@ -577,8 +585,8 @@ void loop() {
           PlayVoice(int(day()) + 1058);                                                                                                                                               // play the voice line representing the day (example: "the fifth")
           PlayVoice(int(month()) + 1089);                                                                                                                                             // play the voice line representing the month (example: "of February")
 
-          uint8_t year_first_half = year() / 100;                                                                                                                                     // find the first part of the year number (example 2022 = 20)
-          uint8_t year_second_half = year() % (year_first_half * 100);                                                                                                                // find the second part of the year number (example 2022 = 22)
+          uint_least8_t year_first_half = year() / 100;                                                                                                                               // find the first part of the year number (example 2022 = 20)
+          uint_least8_t year_second_half = year() % (year_first_half * 100);                                                                                                          // find the second part of the year number (example 2022 = 22)
 
           PlayVoice(year_first_half + 1141);                                                                                                                                          // Play the number 0 - 99 for the first part of the year
           if (year_second_half == 0) PlayVoice(1124);                                                                                                                                 // Voice Line: "hundred"
@@ -618,13 +626,13 @@ void loop() {
 //----------------------------------------------------------------------------------------------------------------VOICE INTERFERENCE SYSTEM - LABEL RECEIVED: 13 >> Command: "How is it going to be today?"------------------------------------------------------------------------------------------------------------------
       case 13: 
       {
-        uint8_t allLabels[4], bestLabels[2] = {5, 5}, primes[5] = {2, 3, 5, 7, 11};                                                                                                   // declare and initialise arrays for computations
-        uint16_t product = 1;
-        for (uint8_t l = 0; l < 4; l++) {
+        uint_least8_t allLabels[4], bestLabels[2] = {5, 5}, primes[5] = {2, 3, 5, 7, 11};                                                                                             // declare and initialise arrays for computations
+        uint_least16_t product = 1;
+        for (uint_least8_t l = 0; l < 4; l++) {
           allLabels[l] = dataReceived[l];                                                                                                                                             // pass the value of the labels from the main I2C array to the ML array
           product *= primes[allLabels[l]];                                                                                                                                            // create the product of 4 primes >> depending on the 4 labels received
         }
-        for (uint8_t k = 0; k < 4; k++) if (!fmod(product, sq(primes[allLabels[k]]))) bestLabels[k / 2] = allLabels[k];                                                               // divide the product of the primes (from the 4 labels) with all 5 labels to find which value repeats
+        for (uint_least8_t k = 0; k < 4; k++) if (!fmod(product, sq(primes[allLabels[k]]))) bestLabels[k / 2] = allLabels[k];                                                         // divide the product of the primes (from the 4 labels) with all 5 labels to find which value repeats
 
         // machine learning weather classification output
         if (bestLabels[0] == 5) PlayVoice(allLabels[1] + 742);                                                                                                                        // every label repeats once. XGBoost has been selected for ML Classification as the most robust model
@@ -715,7 +723,7 @@ void loop() {
       }
     }
   }
-  if (!low_power_mode) ThisThread::sleep_for(1000);                                                                                                                                   // if the low power mode flag is false, then continue updating the sensors every 1 second
+  if (!low_battery_mode) ThisThread::sleep_for(1000);                                                                                                                                 // if the low power mode flag is false, then continue updating the sensors every 1 second
   else ThisThread::sleep_for(300000);                                                                                                                                                 // else if the flag is high, then update the main loop and sensors every 5 minutes
 }
 
@@ -726,8 +734,8 @@ void loop() {
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------DISCOMFORT COMPUTATION---------------------------------------------------------------------------------------------------------------------------------------------------
-uint8_t DiscomfortComputation(float temperature, uint8_t humidity) {
-  uint8_t index = temperature - 0.55 * (1 - 0.01 * humidity) * (temperature - 14.5);                                                                                                  // discomfort index formula
+uint_least8_t DiscomfortComputation(float temperature, uint_least8_t humidity) {
+  uint_least8_t index = temperature - 0.55 * (1 - 0.01 * humidity) * (temperature - 14.5);                                                                                            // discomfort index formula
   return index;                                                                                                                                                                       // return discomfort index value as 8 bit integer
 }
 
@@ -757,8 +765,8 @@ void DistanceFormatted(int32_t distance_value) {
       PlayVoice(distance_value + 1147);                                                                                                                                               // Voice Line: number between 0 and 999
       MetersFormatted(distance_value);                                                                                                                                                // Formatting Meters or Meter output depending on the value
   } else {
-      uint8_t  distance_value_kilometers = distance_value / 1000;                                                                                                                     // find from the given value the number of kilometers
-      uint16_t distance_value_meters     = distance_value % 1000;                                                                                                                     // find from the given value the number of meters
+      uint_least8_t  distance_value_kilometers = distance_value / 1000;                                                                                                               // find from the given value the number of kilometers
+      uint_least16_t distance_value_meters     = distance_value % 1000;                                                                                                               // find from the given value the number of meters
   
       PlayVoice(distance_value_kilometers + 1147);                                                                                                                                    // Voice Line: number between 0 and 999 
       if (distance_value_kilometers == 1) PlayVoice(45);                                                                                                                              // if the distance_travelled is 1 kilometer + x meters, then say "kilometer" voice line, not "kilometers"
@@ -774,7 +782,7 @@ void DistanceFormatted(int32_t distance_value) {
 }
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------METERS OUTPUT FORMATTED--------------------------------------------------------------------------------------------------------------------------------------------------
-void MetersFormatted(uint16_t meters) {
+void MetersFormatted(uint_least16_t meters) {
   if (meters == 1) PlayVoice(1117);                                                                                                                                                   // if the given value is equal to 1 then output "meter"          
   else PlayVoice(44);                                                                                                                                                                 // Voice Line: "meters"                       
 }
@@ -784,8 +792,8 @@ void OutputFormatted(unsigned long output) {
   if (output < 1000) {                                                                                                                                                                // if the output is lower than 1 thousand, then use the voice lines available for the number speech
       PlayVoice(int(output) + 1147);                                                                                                                                                  // Voice Line: number between 0 and 999
   } else if (output >= 1000) {                                                                                                                                                        // if the output is higher or equal to 1000, then convert the output to thousand + remainder
-      uint8_t  output_thousands = output / 1000;                                                                                                                                      // divide the value by 1000 to get the number of thousands
-      uint16_t output_remainder = output % 1000;                                                                                                                                      // use Arduino Modulo function to get the remaining amount
+      uint_least8_t  output_thousands = output / 1000;                                                                                                                                // divide the value by 1000 to get the number of thousands
+      uint_least16_t output_remainder = output % 1000;                                                                                                                                // use Arduino Modulo function to get the remaining amount
   
       PlayVoice(output_thousands + 1147);                                                                                                                                             // Voice Line: number between 0 and 999
       PlayVoice(1116);                                                                                                                                                                // Voice Line: "thousand"
@@ -808,10 +816,10 @@ void DegreesFormatted(float deg_value) {
 void CoordinateFormatted(float coord_given) {
   if (coord_given < 0) PlayVoice(43);                                                                                                                                                 // Voice Line: "negative"                                                                                                                                      
   
-  uint16_t absolute_coord_value = abs(coord_given);                                                                                                                                   // absolute of the given coordiante value                                                                                                                             
+  uint_least16_t absolute_coord_value = abs(coord_given);                                                                                                                             // absolute of the given coordiante value                                                                                                                             
   if (absolute_coord_value == 0) PlayVoice(1147);                                                                                                                                     // if the value is equal to 0, play the 0 voice line
   else if (absolute_coord_value > 0 && absolute_coord_value <= 35) {                                                                                                                  // if the value is between 0 and 35 then use the 0.01-35.00 voice lines to output value
-      uint16_t processed_coord = int(round((absolute_coord_value * 1000) / 10));                                                                                                      // rule to use the 0.01 - 35.00 voice lines
+      uint_least16_t processed_coord = int(round((absolute_coord_value * 1000) / 10));                                                                                                // rule to use the 0.01 - 35.00 voice lines
       PlayVoice(processed_coord + 2146);                                                                                                                                              // output number
   } else OutputFormatted(absolute_coord_value);                                                                                                                                       // if the value is higher than 35, then use the OutputFormatted function which can output hundreds and thousands
   
@@ -820,9 +828,9 @@ void CoordinateFormatted(float coord_given) {
 //-----------------------------------------------------------------------------------------------------------------------------------------MAIN SENSORS THRESHOLDING/EWMA FILTERING-----------------------------------------------------------------------------------------------------------------------------------------
 void UpdateMainSensors(void) {
   float temperature_BMP390_readings = 0, temperature_BME688_readings = 0, pressure_BMP390_readings = 0;                                                                               // declare and initialize variable for the sum of 10 readings
-  uint16_t humidity_BME688_readings = 0;                                                                                                                                              // 16 bits/2 bytes are required to hold 10 values that can reach 10000
+  uint_least16_t humidity_BME688_readings = 0;                                                                                                                                        // 16 bits/2 bytes are required to hold 10 values that can reach 10000
 
-  for (uint8_t i = 0; i < 10; i++) {                                                                                                                                                  // 10 total values updated with a loop
+  for (uint_least8_t i = 0; i < 10; i++) {                                                                                                                                            // 10 total values updated with a loop
     BHY2.update();                                                                                                                                                                    // necessary to update sensor classes
     temperature_BMP390_readings += temperature.value();                                                                                                                               // sum all the values from the array to create the temperature threshold value
     temperature_BME688_readings += bsec.comp_t();                                                                                                                                     // sum all the values from the array to create the temperature 2 threshold value
@@ -831,19 +839,19 @@ void UpdateMainSensors(void) {
     ThisThread::sleep_for(50);                                                                                                                                                        // get a new value every 50ms => 500ms + 12ms total runtime of loop
   }
 
-  float temp_BMP390_outlier_higher_bound   = 1.20 * (temperature_BMP390_readings / 10);                                                                                               // 120% of the average of the last 10 values
-  float temp_BMP390_outlier_lower_bound    = 0.80 * (temperature_BMP390_readings / 10);                                                                                               // 80% of the average of the last 10 values
+  float temp_BMP390_outlier_higher_bound = 1.20 * (temperature_BMP390_readings / 10);                                                                                                 // 120% of the average of the last 10 values
+  float temp_BMP390_outlier_lower_bound  = 0.80 * (temperature_BMP390_readings / 10);                                                                                                 // 80% of the average of the last 10 values
 
-  float temp_BME688_outlier_higher_bound   = 1.20 * (temperature_BME688_readings / 10);                                                                                               // 120% of the average of the last 10 values
-  float temp_BME688_outlier_lower_bound    = 0.80 * (temperature_BME688_readings / 10);                                                                                               // 80% of the average of the last 10 values
-
-  float pres_BMP390_outlier_higher_bound   = 1.20 * (pressure_BMP390_readings / 10);                                                                                                  // 120% of the average of the last 10 values
-  float pres_BMP390_outlier_lower_bound    = 0.80 * (pressure_BMP390_readings / 10);                                                                                                  // 80% of the average of the last 10 values
+  float temp_BME688_outlier_higher_bound = 1.20 * (temperature_BME688_readings / 10);                                                                                                 // 120% of the average of the last 10 values
+  float temp_BME688_outlier_lower_bound  = 0.80 * (temperature_BME688_readings / 10);                                                                                                 // 80% of the average of the last 10 values
   
-  uint8_t hum_BME688_outlier_higher_bound  = 1.20 * (humidity_BME688_readings / 10);                                                                                                  // 120% of the average of the last 10 values
-  uint8_t hum_BME688_outlier_lower_bound   = 0.80 * (humidity_BME688_readings / 10);                                                                                                  // 80% of the average of the last 10 values
+  float pres_BMP390_outlier_higher_bound = 1.20 * (pressure_BMP390_readings / 10);                                                                                                    // 120% of the average of the last 10 values
+  float pres_BMP390_outlier_lower_bound  = 0.80 * (pressure_BMP390_readings / 10);                                                                                                    // 80% of the average of the last 10 values
+  
+  uint_least8_t hum_BME688_outlier_higher_bound = 1.20 * (humidity_BME688_readings / 10);                                                                                             // 120% of the average of the last 10 values
+  uint_least8_t hum_BME688_outlier_lower_bound  = 0.80 * (humidity_BME688_readings / 10);                                                                                             // 80% of the average of the last 10 values
 
-  for (uint8_t t_BMP390, t_BMP688, p_BMP390, h_BME688; t_BMP390 < 10 && t_BMP688 < 10 && p_BMP390 < 10 && h_BME688 < 10;) {                                                           // for loop to get all values updated 10 times through EWMA
+  for (uint_least8_t t_BMP390, t_BMP688, p_BMP390, h_BME688; t_BMP390 < 10 && t_BMP688 < 10 && p_BMP390 < 10 && h_BME688 < 10;) {                                                     // for loop to get all values updated 10 times through EWMA
     BHY2.update();                                                                                                                                                                    // update sensor values each loop
     if (temperature.value() >= temp_BMP390_outlier_lower_bound && temperature.value() <= temp_BMP390_outlier_higher_bound && t_BMP390 < 10) {                                         // if the BMP390 temperature reading is between the lower and higher bounds of the threshold, and there have been less than 10 updates
         temperature_BMP390_filtered = temperature_BMP390_ewma.filter(temperature.value());                                                                                            // update BMP390 temperature filter variable 
@@ -871,9 +879,9 @@ void HeartMonitor(void) {
   
   if (motion_event.equals("Event detected\n")) PlayVoice(26);                                                                                                                         // if motion then play the Voice Line: "My sensors are telling me that you are active, please stand still for an accurate reading!"
   else {                                                                                                                                                                              // else perform the heart rate processing
-    uint16_t heart_value = 0, last_beat = 0;
+    uint_least16_t heart_value = 0, last_beat = 0;
     
-    for (uint8_t i = 0; i < 8;) {                                                                                                                                                     // start a for loop with 8 iterations
+    for (uint_least8_t i = 0; i < 8;) {                                                                                                                                               // start a for loop with 8 iterations
       heart_value = analogRead(heartrate_pin);                                                                                                                                        // read the analog value
       if (heart_value > last_beat) {                                                                                                                                                  // if the new value is higher than the last then:
         last_beat = heart_value;                                                                                                                                                      // store it for the use in the next iteration
@@ -882,8 +890,8 @@ void HeartMonitor(void) {
     }
   
     ThisThread::sleep_for(300);                                                                                                                                                       // the voice lines play immediately one after the other, the delay adds a pause
-    uint8_t bpm_filtered = 0;                                                                                                                                                         // set the filtered variable as 0
-    for (uint8_t i = 0; i < 10; i++) {                                                                                                                                                // perform 10 iterations
+    uint_least8_t bpm_filtered = 0;                                                                                                                                                   // set the filtered variable as 0
+    for (uint_least8_t i = 0; i < 10; i++) {                                                                                                                                          // perform 10 iterations
       heart_value = analogRead(heartrate_pin);                                                                                                                                        // read the analog value of the heart rate sensor SEN0203
       bpm_filtered = (heart_rate.filter(heart_value))/10 + 15;                                                                                                                        // pass it to the exponentially weighted moving average, but divide by 10 and add 15 which represents the formula for output
     }
